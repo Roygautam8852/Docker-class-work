@@ -1,0 +1,21 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\gauta> $env:APP_PORT=8080
+PS C:\Users\gauta> echo $env:APP_PORT
+8080
+PS C:\Users\gauta> docker run -e APP_PORT=$env:APP_PORT nginx env
+HOSTNAME=ca2e873f2d91
+HOME=/root
+APP_PORT=8080
+PKG_RELEASE=1~trixie
+DYNPKG_RELEASE=1~trixie
+ACME_VERSION=0.3.1
+NGINX_VERSION=1.29.5
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+NJS_VERSION=0.9.5
+NJS_RELEASE=1~trixie
+PWD=/
+PS C:\Users\gauta>
