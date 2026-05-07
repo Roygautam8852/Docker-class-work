@@ -1,0 +1,423 @@
+📚 DAY 22: DOCKER SWARM - CLUSTER & ORCHESTRATION
+=================================================
+
+Additional Topics: Container Orchestration, Docker Swarm
+Topics: Swarm initialization, services, deployment strategies
+
+1️⃣ CONTAINER ORCHESTRATION OVERVIEW
+───────────────────────────────────
+
+What is Container Orchestration?
+- Automates container lifecycle management
+- Deployment across multiple hosts
+- Service discovery
+- Load balancing
+- Resource management
+- Scaling
+- Updates and rollbacks
+
+Orchestration Platforms:
+- Docker Swarm (Simple, built-in)
+- Kubernetes (Complex, powerful)
+- AWS ECS (Cloud-specific)
+- HashiCorp Nomad (General-purpose)
+
+Docker Swarm vs Kubernetes:
+                    Swarm       Kubernetes
+Complexity          Simple      Complex
+Learning curve      Gentle      Steep
+Setup time          Minutes     Hours
+Use case            Small/Med   Enterprise
+Native integration  Docker      Any container
+Installation        Built-in    Separate
+
+When to Use Swarm:
+✓ Single-machine deployments
+✓ Small teams (< 10 nodes)
+✓ Simple orchestration needs
+✓ Docker-native solutions
+✓ Learning and development
+
+When to Use Kubernetes:
+✓ Large-scale deployments
+✓ Multi-cloud
+✓ Complex requirements
+✓ Enterprise workloads
+✓ High availability
+
+
+2️⃣ DOCKER SWARM FUNDAMENTALS
+────────────────────────────
+
+Swarm Architecture:
+
+Manager Nodes:
+- Accept commands
+- Orchestrate services
+- Maintain cluster state
+- Store configuration
+- Minimum 1, recommended 3, 5, 7 (odd numbers)
+- Leader handles operations
+
+Worker Nodes:
+- Execute tasks
+- Report status
+- Run containers
+- Scale horizontally
+- No management duties
+
+Swarm = Cluster of Machines Running Docker
+
+Initialization:
+$ docker swarm init
+
+This makes current machine a manager.
+
+Output:
+Swarm initialized: current node (xyzabc...) is now a manager.
+
+To add a worker to this swarm, run the following command:
+docker swarm join --token SWMTKN-1-xxx... 192.168.1.100:2377
+
+View Swarm Status:
+$ docker node ls
+$ docker swarm inspect current
+$ docker info
+
+
+3️⃣ CREATING DOCKER SWARM CLUSTER
+────────────────────────────────
+
+Step 1: Initialize Swarm on Manager
+On manager machine:
+$ docker swarm init --advertise-addr 192.168.1.100
+
+Step 2: Get Worker Token
+$ docker swarm join-token worker
+
+Output shows command to run on workers:
+docker swarm join --token SWMTKN-1-xxx... 192.168.1.100:2377
+
+Step 3: Join Workers
+On each worker machine:
+$ docker swarm join --token SWMTKN-1-xxx... 192.168.1.100:2377
+
+Node joined a swarm as a worker.
+
+Step 4: Verify Cluster
+On manager:
+$ docker node ls
+
+Output:
+ID              HOSTNAME        STATUS      AVAILABILITY    MANAGER STATUS
+xyzabc...       manager-1       Ready       Active          Leader
+defgh...        worker-1        Ready       Active          
+ijklm...        worker-2        Ready       Active
+
+View Node Details:
+$ docker node inspect worker-1
+$ docker node ps worker-1  # Tasks running on node
+
+
+4️⃣ SWARM SERVICES & DEPLOYMENTS
+──────────────────────────────
+
+Creating Services:
+$ docker service create --name webserver \
+  --replicas 3 \
+  -p 8080:80 \
+  nginx:latest
+
+Replicas:
+- Number of container copies
+- Swarm distributes across nodes
+- Automatic failover
+- Load balancing built-in
+
+Service Management:
+$ docker service ls
+$ docker service ps webserver          # Task details
+$ docker service inspect webserver     # Full details
+$ docker service logs webserver        # Service logs
+$ docker service update webserver --replicas 5  # Scale
+
+
+5️⃣ SERVICE DISCOVERY & NETWORKING
+──────────────────────────────────
+
+Overlay Network:
+$ docker network create --driver overlay mynet
+
+Creating Service on Overlay Network:
+$ docker service create --name app \
+  --network mynet \
+  --replicas 2 \
+  myapp:latest
+
+$ docker service create --name db \
+  --network mynet \
+  -e MYSQL_ROOT_PASSWORD=root123 \
+  mysql:8
+
+Internal Service Discovery:
+- Services communicate by name: db, app
+- Automatic DNS resolution
+- VIP (Virtual IP) for load balancing
+
+Load Balancing:
+- Each service gets VIP
+- Requests distributed across replicas
+- Round-robin by default
+- DNS name resolves to VIP
+
+
+6️⃣ STACKS & COMPOSE
+──────────────────
+
+What is a Stack?
+- Group of related services
+- Deploy entire application stack
+- Like Docker Compose for Swarm
+- All services share overlay network
+
+Creating Stack from Compose:
+docker-compose.yml:
+version: '3.9'
+
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    networks:
+      - mynet
+
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - mynet
+
+volumes:
+  db_data:
+    driver: local
+
+networks:
+  mynet:
+    driver: overlay
+
+Deploying Stack:
+$ docker stack deploy -c docker-compose.yml mystack
+
+Managing Stacks:
+$ docker stack ls
+$ docker stack ps mystack        # Tasks in stack
+$ docker stack services mystack  # Services in stack
+$ docker stack rm mystack        # Remove stack
+
+
+7️⃣ ROLLING UPDATES
+──────────────────
+
+Update Strategy:
+$ docker service update --image nginx:latest webserver
+
+Update Configuration:
+version: '3.9'
+services:
+  web:
+    image: nginx:latest
+    deploy:
+      update_config:
+        parallelism: 2          # Update 2 at a time
+        delay: 10s              # Wait 10s between updates
+        failure_action: rollback # Rollback on failure
+        monitor: 5s             # Monitor for 5s
+
+
+8️⃣ PRACTICAL SWARM DEPLOYMENT
+─────────────────────────────
+
+Example: 3-Node Cluster Deployment
+
+docker-compose.yml:
+version: '3.9'
+
+services:
+  frontend:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 5s
+    networks:
+      - frontend
+
+  api:
+    image: myapp:latest
+    environment:
+      - DB_HOST=db
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - backend
+
+volumes:
+  db_data:
+
+networks:
+  frontend:
+    driver: overlay
+  backend:
+    driver: overlay
+
+Deployment Steps:
+
+1. Initialize Swarm on manager:
+$ docker swarm init
+
+2. Add workers:
+$ docker swarm join-token worker
+# Run on each worker
+
+3. Deploy stack:
+$ docker stack deploy -c docker-compose.yml myapp
+
+4. Check deployment:
+$ docker stack ps myapp
+$ docker service ls
+$ docker service ps api
+
+5. Scale service:
+$ docker service update --replicas 4 myapp_api
+
+6. View logs:
+$ docker service logs myapp_api
+
+7. Update image:
+$ docker service update --image myapp:v1.1 myapp_api
+
+8. View health:
+$ docker node ls
+$ docker node ps manager-1
+
+
+PRACTICAL EXERCISE:
+===================
+
+Single-Machine Swarm Setup (Learning):
+
+1. Initialize Swarm:
+$ docker swarm init
+
+2. Create overlay network:
+$ docker network create --driver overlay demo-net
+
+3. Deploy nginx service:
+$ docker service create --name web \
+  --replicas 2 \
+  -p 8080:80 \
+  --network demo-net \
+  nginx:latest
+
+4. Verify service:
+$ docker service ls
+$ docker service ps web
+
+5. Test load balancing:
+$ curl http://localhost:8080
+$ # Try multiple times, see different containers
+
+6. Scale up:
+$ docker service update --replicas 4 web
+
+7. Check tasks:
+$ docker service ps web
+
+8. Deploy with Compose:
+$ cat > docker-compose.yml << 'EOF'
+version: '3.9'
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 5s
+    networks:
+      - mynet
+
+  db:
+    image: mysql:8
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+    networks:
+      - mynet
+
+networks:
+  mynet:
+    driver: overlay
+EOF
+
+$ docker stack deploy -c docker-compose.yml mystack
+
+9. View stack:
+$ docker stack ps mystack
+$ docker stack services mystack
+
+10. Remove stack:
+$ docker stack rm mystack
+
+
+KEY CONCEPTS:
+=============
+✓ Swarm = Docker's orchestration platform
+✓ Manager nodes = coordinate cluster
+✓ Worker nodes = execute tasks
+✓ Services = deployed applications
+✓ Replicas = scaling
+✓ Overlay networks = inter-service communication
+✓ Stacks = application groups
+✓ Load balancing = automatic
+✓ Service discovery = DNS-based
+✓ Rolling updates = zero-downtime
+✓ Simple to learn and use
+✓ Good for small to medium deployments

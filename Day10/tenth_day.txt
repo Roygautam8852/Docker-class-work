@@ -1,0 +1,297 @@
+📚 DAY 10: DOCKER COMPOSE FUNDAMENTALS
+======================================
+
+Unit III: Microservices with Docker Compose
+Topics: Docker Compose basics, YAML structure, docker-compose.yml
+
+1️⃣ DOCKER COMPOSE OVERVIEW
+──────────────────────────
+
+What is Docker Compose?
+- Tool for defining multi-container applications
+- Uses YAML file to define services
+- Single command to start/stop all containers
+- Networking configured automatically
+- Volume management simplified
+
+Why Docker Compose?
+✓ Simplifies multi-container applications
+✓ Better than manual docker run commands
+✓ Environment reproducibility
+✓ Perfect for development & testing
+✓ Service orchestration basics
+
+Installation:
+- Comes with Docker Desktop (Windows/Mac)
+- Linux: pip install docker-compose or package manager
+
+Verify Installation:
+$ docker-compose --version
+$ docker compose version  # Newer syntax
+
+
+2️⃣ DOCKER COMPOSE FILE STRUCTURE
+─────────────────────────────────
+
+Basic YAML Structure:
+version: '3.8'
+
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  db_data:
+
+
+YAML Basics:
+✓ Indentation matters (2 spaces)
+✓ key: value format
+✓ Lists use - prefix
+✓ Strings in quotes
+
+Version Specifications:
+✓ '3.8' = Latest stable
+✓ '3' = Default
+✓ Check docker.io/r/compose for details
+
+
+3️⃣ SERVICES SECTION
+─────────────────────
+
+Service Configuration:
+
+services:
+  web:
+    image: nginx:latest              # Pre-built image
+    build: ./app                     # Build from Dockerfile
+    container_name: my-web           # Custom container name
+    ports:
+      - "8080:80"                    # Port mapping
+      - "443:443"
+    environment:
+      - APP_ENV=production           # Environment variables
+      - DEBUG=false
+    volumes:
+      - ./data:/app/data             # Bind mount
+      - app_data:/var/www            # Named volume
+    networks:
+      - backend                      # Custom network
+    depends_on:                       # Service dependencies
+      - db
+    restart: always                  # Restart policy
+    command: npm start               # Override CMD
+    healthcheck:                     # Health checking
+      test: ["CMD", "curl", "http://localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+
+Common Service Options:
+
+image: ubuntu:20.04              # Use existing image
+build:                           # Build from Dockerfile
+  context: ./app                 # Build context
+  dockerfile: Dockerfile         # Dockerfile location
+  args:                         # Build arguments
+    BUILD_DATE: 2026-05-07
+
+container_name: my-app          # Container name (not replicated)
+hostname: webserver             # Hostname inside container
+dns:                           # Custom DNS
+  - 8.8.8.8
+working_dir: /app              # WORKDIR equivalent
+
+stdin_open: true               # Keep STDIN open
+tty: true                      # Allocate TTY
+privileged: true               # Run privileged
+user: appuser                  # Run as user
+
+
+4️⃣ ENVIRONMENT VARIABLES & VOLUMES
+─────────────────────────────────
+
+Environment Variables:
+Option 1: Inline
+environment:
+  - DATABASE_URL=mysql://db:3306/mydb
+  - APP_SECRET=secret123
+
+Option 2: From file
+env_file:
+  - .env
+  - .env.production
+
+Option 3: From host
+environment:
+  - HOME=$HOME
+  - PATH=$PATH
+
+
+Volumes Types:
+
+Named Volume:
+volumes:
+  - db_data:/var/lib/mysql
+
+Bind Mount:
+volumes:
+  - ./source:/app/source
+  - ./config:/etc/config:ro
+
+Anonymous Volume:
+volumes:
+  - /data
+
+
+5️⃣ NETWORKING & SERVICE DISCOVERY
+──────────────────────────────────
+
+Default Network:
+- Automatic bridge network created
+- Services communicate by name
+- DNS resolution built-in
+
+Custom Networks:
+networks:
+  backend:
+    driver: bridge
+  frontend:
+    driver: bridge
+
+Using Multiple Networks:
+services:
+  web:
+    networks:
+      - frontend
+  db:
+    networks:
+      - backend
+
+Service Discovery (DNS):
+From web service:
+$ ping db  # Resolves to db container IP
+
+
+6️⃣ DOCKER-COMPOSE COMMANDS
+───────────────────────────
+
+Basic Commands:
+$ docker-compose up                  # Start services
+$ docker-compose up -d               # Detached mode
+$ docker-compose down                # Stop & remove containers
+$ docker-compose restart             # Restart services
+$ docker-compose pause               # Pause services
+$ docker-compose unpause             # Resume services
+$ docker-compose stop                # Stop services
+$ docker-compose start               # Start stopped services
+
+Container Operations:
+$ docker-compose ps                  # List containers
+$ docker-compose logs                # View logs
+$ docker-compose logs -f             # Follow logs
+$ docker-compose logs web            # Logs of specific service
+
+Execute Commands:
+$ docker-compose exec db bash        # Execute command in running container
+$ docker-compose run web npm test    # Run one-off command
+
+Management:
+$ docker-compose build               # Build all services
+$ docker-compose build web           # Build specific service
+$ docker-compose pull                # Pull all images
+$ docker-compose push                # Push images
+$ docker-compose config              # Validate compose file
+$ docker-compose version             # Show version
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Create project directory:
+$ mkdir docker-compose-demo
+$ cd docker-compose-demo
+
+2. Create docker-compose.yml:
+version: '3.8'
+
+services:
+  web:
+    image: nginx:latest
+    container_name: webserver
+    ports:
+      - "8080:80"
+    networks:
+      - mynetwork
+    depends_on:
+      - app
+
+  app:
+    image: ubuntu:22.04
+    container_name: app-service
+    command: /bin/bash -c "sleep 1000"
+    networks:
+      - mynetwork
+    environment:
+      - APP_NAME=DemoApp
+      - DEBUG=true
+
+  db:
+    image: mysql:8
+    container_name: database
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=testdb
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - mynetwork
+
+volumes:
+  db_data:
+
+networks:
+  mynetwork:
+    driver: bridge
+
+3. Start services:
+$ docker-compose up -d
+
+4. Verify services:
+$ docker-compose ps
+$ docker-compose logs
+
+5. Test networking:
+$ docker-compose exec app ping db
+
+6. Access web service:
+$ curl http://localhost:8080
+
+7. Stop services:
+$ docker-compose down
+
+8. Validate file:
+$ docker-compose config
+
+
+KEY CONCEPTS:
+=============
+✓ Docker Compose = multi-container orchestration
+✓ YAML = configuration format
+✓ Services = individual containers
+✓ Automatic networking
+✓ Volume management
+✓ Environment variables
+✓ Service dependencies
+✓ Easy start/stop of all services

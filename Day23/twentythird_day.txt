@@ -1,0 +1,443 @@
+📚 DAY 23: HANDS-ON PRACTICALS & LAB 1-7
+=======================================================
+
+Practical Experiments from Syllabus
+Topics: Installation, account creation, Dockerfile, storage, microservices
+
+PRACTICAL 1: INSTALLING DOCKER ON WINDOWS/LINUX
+===============================================
+
+Windows Installation:
+
+Step 1: Requirements Check
+- Windows 10/11 Pro, Enterprise, or Education
+- Hyper-V enabled
+- Virtualization enabled in BIOS
+
+Hyper-V Enablement:
+1. Control Panel → Programs → Programs and Features
+2. Click "Turn Windows features on or off"
+3. Check "Hyper-V"
+4. Restart computer
+
+Step 2: Download Docker Desktop
+- Go to https://www.docker.com/products/docker-desktop
+- Download Docker Desktop for Windows
+- Run installer
+- Follow installation wizard
+- Restart computer
+
+Step 3: Verify Installation
+$ docker --version
+$ docker run hello-world
+
+Output: "Hello from Docker!"
+
+Linux (Ubuntu) Installation:
+
+Update packages:
+$ sudo apt-get update
+
+Add Docker repository:
+$ sudo apt-get install ca-certificates curl gnupg lsb-release
+$ curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+$ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+Install Docker:
+$ sudo apt-get update
+$ sudo apt-get install docker-ce docker-ce-cli containerd.io
+
+Post-install (run as non-root):
+$ sudo usermod -aG docker $USER
+$ newgrp docker
+
+Verify:
+$ docker run hello-world
+
+
+PRACTICAL 2: DOCKER HUB ACCOUNT & PUSHING IMAGES
+================================================
+
+Step 1: Create Docker Hub Account
+1. Go to https://hub.docker.com
+2. Click "Sign Up"
+3. Fill in email, username, password
+4. Verify email
+5. Login
+
+Step 2: Create Repository
+1. Login to Docker Hub
+2. Click "Repositories" → "Create Repository"
+3. Name: "my-first-app"
+4. Visibility: "Public"
+5. Create
+
+Step 3: Login from Docker CLI
+$ docker login
+Username: your_username
+Password: your_password
+
+Step 4: Build Image
+$ docker build -t myapp:1.0 .
+
+Step 5: Tag for Hub
+$ docker tag myapp:1.0 your_username/my-first-app:1.0
+
+Step 6: Push to Docker Hub
+$ docker push your_username/my-first-app:1.0
+
+Step 7: Pull from Another Machine
+$ docker pull your_username/my-first-app:1.0
+
+Step 8: Save Changes to Container
+Running container changes:
+$ docker run -d --name mycontainer ubuntu sleep 1000
+$ docker exec mycontainer apt-get update
+$ docker exec mycontainer apt-get install -y curl
+
+Commit changes:
+$ docker commit mycontainer your_username/my-first-app:with-curl
+
+Push updated image:
+$ docker push your_username/my-first-app:with-curl
+
+
+PRACTICAL 3: CREATING A DOCKERFILE
+===================================
+
+Create Project Structure:
+my-app/
+├── Dockerfile
+├── app.py
+├── requirements.txt
+└── .dockerignore
+
+Python Application (app.py):
+from flask import Flask
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return 'Hello from Docker!'
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
+Dependencies (requirements.txt):
+Flask==2.3.0
+Werkzeug==2.3.0
+
+Dockerfile:
+# Build stage
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY app.py .
+
+# Expose port
+EXPOSE 5000
+
+# Environment variable
+ENV FLASK_APP=app.py
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:5000/ || exit 1
+
+# Command
+CMD ["python", "app.py"]
+
+.dockerignore:
+__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+README.md
+*.md
+
+Build Image:
+$ docker build -t myflaskapp:1.0 .
+
+Run Container:
+$ docker run -d -p 5000:5000 --name flask-app myflaskapp:1.0
+
+Test Application:
+$ curl http://localhost:5000/
+
+Check Logs:
+$ docker logs flask-app
+
+Stop and Remove:
+$ docker stop flask-app
+$ docker rm flask-app
+
+
+PRACTICAL 4: DOCKER STORAGE & LINKING
+======================================
+
+Volumes:
+$ docker volume create app-data
+
+Run with Volume:
+$ docker run -d \
+  --name app1 \
+  -v app-data:/app/data \
+  ubuntu
+
+Create file in app1:
+$ docker exec app1 bash -c "echo 'Hello' > /app/data/test.txt"
+
+Run app2 with same volume:
+$ docker run -d \
+  --name app2 \
+  -v app-data:/app/data \
+  ubuntu
+
+Check file in app2:
+$ docker exec app2 cat /app/data/test.txt
+
+Output: "Hello" (data persists!)
+
+Link Containers:
+$ docker run -d --name db mysql:8 \
+  -e MYSQL_ROOT_PASSWORD=root123
+
+$ docker run -d --name app \
+  --link db:database \
+  -e DB_HOST=database \
+  myapp:latest
+
+Test connection:
+$ docker exec app ping database
+
+
+PRACTICAL 5: INTRODUCTION TO MICROSERVICES
+===========================================
+
+Create Microservices Architecture:
+
+/microservices
+  ├── api-service/
+  │   ├── Dockerfile
+  │   └── app.py
+  ├── db-service/
+  │   └── docker-compose.yml
+  └── docker-compose.yml
+
+API Service (api-service/app.py):
+from flask import Flask, jsonify
+import mysql.connector
+
+app = Flask(__name__)
+
+@app.route('/api/users')
+def get_users():
+    try:
+        conn = mysql.connector.connect(
+            host='db',
+            user='root',
+            password='root123',
+            database='appdb'
+        )
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users")
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(users)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
+API Dockerfile:
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 5000
+CMD ["python", "app.py"]
+
+Main docker-compose.yml:
+version: '3.9'
+
+services:
+  api:
+    build: ./api-service
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=root123
+    networks:
+      - app-network
+
+  db:
+    image: mysql:8
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=appdb
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - app-network
+
+volumes:
+  db_data:
+
+networks:
+  app-network:
+
+Deploy:
+$ docker-compose up -d
+
+Test:
+$ curl http://localhost:5000/api/users
+
+
+PRACTICAL 6: DOCKER COMPOSE INSTALLATION & YAML
+================================================
+
+Installation:
+- Already included with Docker Desktop
+
+Verify:
+$ docker-compose --version
+
+YAML File Structure:
+version: '3.9'
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+  
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+
+Common Operations:
+$ docker-compose up                 # Start services
+$ docker-compose up -d              # Background mode
+$ docker-compose down               # Stop and remove
+$ docker-compose ps                 # List services
+$ docker-compose logs -f            # View logs
+$ docker-compose exec db bash       # Execute command
+
+
+PRACTICAL 7: CONTAINER ORCHESTRATION INTRODUCTION
+==================================================
+
+Container Orchestration Benefits:
+✓ Automatic scaling
+✓ Load balancing
+✓ Self-healing
+✓ Rolling updates
+✓ Resource management
+✓ Multi-host deployment
+
+Docker Swarm Introduction:
+Initialize Swarm:
+$ docker swarm init
+
+Create Service:
+$ docker service create --name webserver \
+  --replicas 3 \
+  -p 8080:80 \
+  nginx:latest
+
+View Service:
+$ docker service ps webserver
+
+Scale Service:
+$ docker service update --replicas 5 webserver
+
+Kubernetes (Alternative):
+Installation (Minikube for learning):
+$ minikube start
+
+Create Deployment:
+$ kubectl create deployment nginx --image=nginx:latest
+
+Expose Service:
+$ kubectl expose deployment nginx --type=LoadBalancer --port=80
+
+
+PRACTICAL ASSIGNMENT CHECKLIST:
+===============================
+
+✓ Day 23 Tasks:
+  □ Install Docker (Windows or Linux)
+  □ Create Docker Hub account
+  □ Create simple Dockerfile
+  □ Build and push to Docker Hub
+  □ Create containers with volumes
+  □ Link containers
+  □ Create multi-service application
+  □ Deploy with Docker Compose
+  □ Explore container orchestration
+
+
+EXERCISE SUMMARY:
+================
+
+1. Install Docker & Verify
+   Expected: docker --version works
+
+2. Hub Account Setup
+   Expected: Account created, repository visible
+
+3. Dockerfile Creation
+   Expected: Image built successfully
+
+4. Storage Testing
+   Expected: Data persists across containers
+
+5. Microservices Deployment
+   Expected: Services communicate via network
+
+6. Compose Deployment
+   Expected: All services running, accessible
+
+7. Orchestration
+   Expected: Services scale and self-heal
+
+
+TROUBLESHOOTING:
+================
+
+Docker not starting on Windows:
+- Enable Hyper-V
+- Check virtualization in BIOS
+- Restart computer
+- Reinstall Docker
+
+Permission denied on Linux:
+- Add user to docker group: sudo usermod -aG docker $USER
+- Logout and login
+
+Image not found:
+- docker pull image_name first
+- Check spelling
+- Check Docker Hub for availability
+
+Port already in use:
+- Check processes: netstat -an
+- Change port mapping: -p 9000:80
+- Kill process: lsof -i :8080

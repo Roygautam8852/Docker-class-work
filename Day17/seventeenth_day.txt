@@ -1,0 +1,443 @@
+📚 DAY 17: DOCKER & GITHUB ACTIONS
+==================================
+
+Unit V: Continuous Integration with GitHub Actions
+Topics: Building Docker images, pushing to registries
+
+1️⃣ BUILDING DOCKER IMAGES IN CI
+────────────────────────────────
+
+Docker Setup in GitHub Actions:
+name: Build Docker Image
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: false
+          tags: myapp:latest
+
+Docker Buildx Setup:
+- docker/setup-buildx-action@v2
+- Enables advanced build features
+- Multi-platform builds
+- Better caching
+
+Build-Push Action:
+uses: docker/build-push-action@v4
+with:
+  context: .              # Build context
+  file: ./Dockerfile      # Dockerfile path
+  push: false             # Don't push yet
+  tags: myapp:latest
+  labels: |
+    org.opencontainers.image.title=MyApp
+    org.opencontainers.image.version=1.0
+
+Build with Tags:
+with:
+  tags: |
+    myregistry/myapp:latest
+    myregistry/myapp:${{ github.sha }}
+    myregistry/myapp:v1.0.0
+
+
+2️⃣ PUSHING TO DOCKER HUB
+────────────────────────
+
+Secrets Setup:
+1. GitHub Settings → Secrets and variables → Actions
+2. Add secrets:
+   - DOCKER_USERNAME (your Docker Hub username)
+   - DOCKER_PASSWORD (your Docker Hub token/password)
+
+Workflow File:
+name: Build and Push to Docker Hub
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/myapp:latest
+            ${{ secrets.DOCKER_USERNAME }}/myapp:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+
+3️⃣ PUSHING TO GITHUB CONTAINER REGISTRY (GHCR)
+────────────────────────────────────────────────
+
+Authentication:
+- GITHUB_TOKEN automatically available
+- Uses github.token in workflow
+- No secrets needed!
+
+Workflow File:
+name: Build and Push to GHCR
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Log in to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+      
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+
+4️⃣ MULTI-STAGE BUILD OPTIMIZATION
+──────────────────────────────────
+
+Efficient Dockerfile:
+FROM maven:3.8.4-openjdk-17 as builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+FROM openjdk:17-jdk-slim
+COPY --from=builder /app/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+GitHub Actions Workflow:
+name: Build Java App
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          driver-options: image=moby/buildkit:master
+      
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+      
+      - name: Build and push multi-stage
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+
+5️⃣ GITHUB ACTIONS MARKETPLACE ACTIONS
+──────────────────────────────────────
+
+Popular Actions:
+
+Checkout:
+- actions/checkout@v3
+- Fetches repository code
+
+Setup Tools:
+- actions/setup-java@v3
+- actions/setup-python@v4
+- actions/setup-node@v3
+- docker/setup-buildx-action@v2
+
+Docker:
+- docker/login-action@v2
+- docker/build-push-action@v4
+- docker/metadata-action@v4
+
+Testing:
+- codecov/codecov-action@v3
+- dorny/test-reporter@v1
+
+Artifacts:
+- actions/upload-artifact@v3
+- actions/download-artifact@v3
+
+Notifications:
+- 8398a7/action-slack@v3
+- slackapi/slack-github-action@v1.24.0
+
+Finding Actions:
+1. Go to GitHub Actions Marketplace
+2. Search for action
+3. Copy usage example
+4. Customize for your workflow
+
+
+6️⃣ COMPREHENSIVE CI/CD WORKFLOW
+────────────────────────────────
+
+Complete Production Workflow:
+name: Full CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        java-version: [11, 17]
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Run tests
+        run: mvn test
+      
+      - name: Generate coverage
+        run: mvn jacoco:report
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./target/site/jacoco/jacoco.xml
+  
+  build:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha
+      
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  
+  deploy:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Your deployment commands here
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Fork a GitHub repository or create new one
+
+2. Create workflow file:
+$ mkdir -p .github/workflows
+$ cat > .github/workflows/docker-push.yml << 'EOF'
+name: Docker Build & Push
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+EOF
+
+3. Commit and push:
+$ git add .github/workflows/docker-push.yml
+$ git commit -m "Add Docker CI/CD workflow"
+$ git push
+
+4. Monitor in Actions tab:
+- Watch workflow execution
+- Check logs
+- Verify image pushed to GHCR
+
+5. View pushed image:
+- Go to https://ghcr.io
+- See your image repository
+
+
+KEY CONCEPTS:
+=============
+✓ GitHub Actions = CI/CD platform
+✓ docker/setup-buildx-action = advanced builds
+✓ docker/build-push-action = build & push images
+✓ GHCR = free container registry with GitHub
+✓ docker/login-action = authenticate to registries
+✓ github.token = automatic authentication
+✓ secrets = sensitive data management
+✓ matrix = multiple configurations
+✓ permissions = access control
+✓ cache = performance optimization

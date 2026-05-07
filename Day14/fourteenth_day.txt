@@ -1,0 +1,423 @@
+📚 DAY 14: MAVEN PLUGINS & DOCKER INTEGRATION
+==============================================
+
+Unit IV: Maven Build Automation
+Topics: Maven plugins, Maven wrapper, Docker integration
+
+1️⃣ MAVEN PLUGINS & EXECUTION
+────────────────────────────
+
+What are Plugins?
+- Extend Maven functionality
+- Attached to lifecycle phases
+- Each phase can have multiple plugins
+- Configured in <build><plugins>
+
+Plugin Structure:
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-compiler-plugin</artifactId>
+  <version>3.10.1</version>
+  <configuration>
+    <source>17</source>
+    <target>17</target>
+  </configuration>
+</plugin>
+
+Common Plugins:
+
+1. Compiler Plugin:
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-compiler-plugin</artifactId>
+  <configuration>
+    <source>17</source>
+    <target>17</target>
+  </configuration>
+</plugin>
+
+2. Surefire Plugin (Unit Testing):
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-surefire-plugin</artifactId>
+  <version>2.22.2</version>
+  <configuration>
+    <includes>
+      <include>**/*Test.java</include>
+      <include>**/*Tests.java</include>
+    </includes>
+  </configuration>
+</plugin>
+
+3. Failsafe Plugin (Integration Testing):
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-failsafe-plugin</artifactId>
+  <executions>
+    <execution>
+      <goals>
+        <goal>integration-test</goal>
+        <goal>verify</goal>
+      </goals>
+    </execution>
+  </executions>
+</plugin>
+
+4. Shade Plugin (Uber JAR):
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-shade-plugin</artifactId>
+  <executions>
+    <execution>
+      <phase>package</phase>
+      <goals>
+        <goal>shade</goal>
+      </goals>
+      <configuration>
+        <transformers>
+          <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+            <mainClass>com.example.App</mainClass>
+          </transformer>
+        </transformers>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>
+
+5. Assembly Plugin:
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-assembly-plugin</artifactId>
+  <executions>
+    <execution>
+      <phase>package</phase>
+      <goals>
+        <goal>single</goal>
+      </goals>
+    </execution>
+  </executions>
+</plugin>
+
+6. JAR Plugin:
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-jar-plugin</artifactId>
+  <configuration>
+    <archive>
+      <manifest>
+        <mainClass>com.example.Main</mainClass>
+      </manifest>
+    </archive>
+  </configuration>
+</plugin>
+
+7. WAR Plugin:
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-war-plugin</artifactId>
+  <configuration>
+    <webXml>src/main/webapp/WEB-INF/web.xml</webXml>
+  </configuration>
+</plugin>
+
+Plugin Execution:
+<execution>
+  <id>default-cli</id>
+  <phase>install</phase>
+  <goals>
+    <goal>shade</goal>
+  </goals>
+</execution>
+
+
+2️⃣ MAVEN WRAPPER
+────────────────
+
+What is Maven Wrapper?
+- Bundled Maven version
+- No need to install Maven separately
+- Ensures consistent builds
+- mvnw replaces mvn command
+
+Creating Wrapper:
+$ mvn wrapper:wrapper
+
+Generated Files:
+my-app/
+├── mvnw                    # Linux/Mac script
+├── mvnw.cmd               # Windows script
+├── .mvn/
+│   └── wrapper/
+│       ├── maven-wrapper.jar
+│       ├── maven-wrapper.properties
+│       └── MavenWrapperDownloader.java
+
+Using Wrapper:
+On Linux/Mac:
+$ ./mvnw clean install
+
+On Windows:
+$ mvnw.cmd clean install
+
+Benefits:
+✓ No Maven installation required
+✓ Specific version guaranteed
+✓ Easy CI/CD setup
+✓ Cross-platform
+
+
+3️⃣ DOCKERFILE-MAVEN-PLUGIN
+───────────────────────────
+
+Plugin for Docker Integration:
+<plugin>
+  <groupId>com.spotify</groupId>
+  <artifactId>dockerfile-maven-plugin</artifactId>
+  <version>1.4.13</version>
+  <configuration>
+    <repository>${docker.image.prefix}/${project.artifactId}</repository>
+    <tag>${project.version}</tag>
+    <dockerfile>Dockerfile</dockerfile>
+  </configuration>
+  <executions>
+    <execution>
+      <phase>package</phase>
+      <goals>
+        <goal>build</goal>
+      </goals>
+    </execution>
+    <execution>
+      <phase>deploy</phase>
+      <goals>
+        <goal>push</goal>
+      </goals>
+    </execution>
+  </executions>
+</plugin>
+
+Properties:
+<properties>
+  <docker.image.prefix>myregistry</docker.image.prefix>
+</properties>
+
+Maven Goals:
+$ mvn dockerfile:build         # Build Docker image
+$ mvn dockerfile:push          # Push to registry
+$ mvn dockerfile:tag           # Tag image
+$ mvn clean package dockerfile:build  # Package and build
+
+
+4️⃣ DOCKERIZING MAVEN APPLICATIONS
+──────────────────────────────────
+
+Multi-stage Docker Build:
+FROM maven:3.8.4-openjdk-17 as builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+FROM openjdk:17-jdk-slim
+COPY --from=builder /app/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+Advantages:
+✓ Builder image has Maven
+✓ Runtime image is lightweight
+✓ Smaller final image
+✓ Faster pulls
+
+Build Command:
+$ docker build -t myapp:1.0 .
+
+Building with Maven Plugin:
+$ mvn clean package dockerfile:build
+
+In pom.xml:
+<project.docker.image>myapp</project.docker.image>
+
+
+5️⃣ MAVEN BUILD LIFECYCLE WITH DOCKER
+────────────────────────────────────
+
+Complete CI Build:
+pom.xml:
+<build>
+  <plugins>
+    <!-- Compiler -->
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-compiler-plugin</artifactId>
+      <version>3.10.1</version>
+      <configuration>
+        <source>17</source>
+        <target>17</target>
+      </configuration>
+    </plugin>
+    
+    <!-- Testing -->
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-surefire-plugin</artifactId>
+      <version>2.22.2</version>
+    </plugin>
+    
+    <!-- Code Coverage -->
+    <plugin>
+      <groupId>org.jacoco</groupId>
+      <artifactId>jacoco-maven-plugin</artifactId>
+      <version>0.8.7</version>
+      <executions>
+        <execution>
+          <goals>
+            <goal>prepare-agent</goal>
+          </goals>
+        </execution>
+        <execution>
+          <id>report</id>
+          <phase>test</phase>
+          <goals>
+            <goal>report</goal>
+          </goals>
+        </execution>
+      </executions>
+    </plugin>
+    
+    <!-- Docker Integration -->
+    <plugin>
+      <groupId>com.spotify</groupId>
+      <artifactId>dockerfile-maven-plugin</artifactId>
+      <version>1.4.13</version>
+      <executions>
+        <execution>
+          <phase>package</phase>
+          <goals>
+            <goal>build</goal>
+          </goals>
+        </execution>
+      </executions>
+    </plugin>
+  </plugins>
+</build>
+
+Build Flow:
+$ mvn clean install
+Validate ↓
+Compile ↓
+Unit Tests ↓
+Package ↓
+Build Docker Image ↓
+Verify ↓
+Install
+
+
+6️⃣ PUSHING TO REGISTRIES
+─────────────────────────
+
+Docker Hub Integration:
+Configure credentials in ~/.m2/settings.xml:
+<servers>
+  <server>
+    <id>docker.io</id>
+    <username>your_username</username>
+    <password>your_token</password>
+  </server>
+</servers>
+
+In pom.xml:
+<plugin>
+  <groupId>com.spotify</groupId>
+  <artifactId>dockerfile-maven-plugin</artifactId>
+  <configuration>
+    <repository>docker.io/your_username/myapp</repository>
+    <registryUrl>https://index.docker.io/v1/</registryUrl>
+  </configuration>
+</plugin>
+
+Building and Pushing:
+$ mvn clean package dockerfile:build dockerfile:push
+
+GHCR Integration:
+<servers>
+  <server>
+    <id>ghcr.io</id>
+    <username>your_github_username</username>
+    <password>your_personal_access_token</password>
+  </server>
+</servers>
+
+<plugin>
+  <groupId>com.spotify</groupId>
+  <artifactId>dockerfile-maven-plugin</artifactId>
+  <configuration>
+    <repository>ghcr.io/your_username/myapp</repository>
+    <registryUrl>https://ghcr.io</registryUrl>
+  </configuration>
+</plugin>
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Create Maven project:
+$ mvn archetype:generate \
+  -DgroupId=com.example \
+  -DartifactId=docker-app \
+  -DarchetypeArtifactId=maven-archetype-quickstart \
+  -DinteractiveMode=false
+
+2. Add Maven wrapper:
+$ cd docker-app
+$ mvn wrapper:wrapper
+
+3. Create Dockerfile:
+$ cat > Dockerfile << 'EOF'
+FROM maven:3.8.4-openjdk-17 as builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+FROM openjdk:17-jdk-slim
+COPY --from=builder /app/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+EOF
+
+4. Add Docker plugin to pom.xml:
+<plugin>
+  <groupId>com.spotify</groupId>
+  <artifactId>dockerfile-maven-plugin</artifactId>
+  <version>1.4.13</version>
+  <configuration>
+    <repository>myapp</repository>
+    <tag>${project.version}</tag>
+  </configuration>
+</plugin>
+
+5. Build with Maven wrapper:
+$ ./mvnw clean package
+
+6. Build Docker image:
+$ ./mvnw dockerfile:build
+
+7. Verify image:
+$ docker images | grep myapp
+
+8. Run container:
+$ docker run myapp:1.0-SNAPSHOT
+
+
+KEY CONCEPTS:
+=============
+✓ Maven plugins = extensibility
+✓ Plugin phases = build automation
+✓ Maven wrapper = consistency
+✓ dockerfile-maven-plugin = Docker integration
+✓ Multi-stage builds = optimization
+✓ Registry integration = deployment
+✓ Build lifecycle = standardization

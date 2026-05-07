@@ -1,0 +1,352 @@
+📚 DAY 19: JENKINS FUNDAMENTALS & ARCHITECTURE
+==============================================
+
+Unit VI: CI/CD with Jenkins
+Topics: Jenkins foundations, architecture, installation, UI
+
+1️⃣ JENKINS OVERVIEW
+───────────────────
+
+What is Jenkins?
+- Open-source automation server
+- CI/CD orchestration
+- Extensive plugin ecosystem
+- Distributed architecture
+- Freestyle and Pipeline jobs
+- Widely used in enterprises
+
+Jenkins vs GitHub Actions:
+                  Jenkins      GitHub Actions
+Setup             Self-hosted  Cloud/Self-hosted
+Plugins           500+         Marketplace actions
+Cost              Free         Free/Paid (high usage)
+Learning curve    Steep        Gentle
+Customization     High         Medium
+Maturity          Mature       Newer
+
+Jenkins Use Cases:
+✓ Legacy system integration
+✓ Complex workflows
+✓ Multiple deployment targets
+✓ Highly customized pipelines
+✓ Private infrastructure
+
+
+2️⃣ JENKINS ARCHITECTURE
+───────────────────────
+
+Master-Agent (Controller-Agent) Model:
+
+Master (Controller):
+- Orchestrates pipelines
+- Manages jobs
+- Web UI
+- Configuration storage
+
+Agents (Executors):
+- Execute build jobs
+- Run tests
+- Deploy applications
+- Multiple agents for parallel builds
+
+Communication:
+Master ↔ Agents (Java serialization, SSH, WebSocket)
+
+Benefits:
+✓ Distributed builds
+✓ Platform-specific agents
+✓ Load balancing
+✓ Scalability
+✓ Isolation
+
+Agent Labels:
+- linux
+- windows
+- docker
+- production
+- staging
+
+Example Job Assignment:
+node('docker') {       // Run on docker-labeled agent
+  // steps here
+}
+
+node('linux && java17') {  // Run on agent with both labels
+  // steps here
+}
+
+
+3️⃣ INSTALLING JENKINS
+──────────────────────
+
+Installation Methods:
+
+Docker (Easiest):
+$ docker run -d -p 8080:8080 -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  --name jenkins \
+  jenkins/jenkins:lts
+
+Ubuntu/Debian:
+$ wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key add -
+$ sudo sh -c 'echo deb https://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+$ sudo apt-get update
+$ sudo apt-get install jenkins
+
+Windows:
+- Download installer from jenkins.io
+- Run MSI installer
+- Configure as Windows service
+
+Docker Compose:
+version: '3'
+
+services:
+  jenkins:
+    image: jenkins/jenkins:lts
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    environment:
+      - JENKINS_OPTS=-Djenkins.install.runSetupWizard=true
+
+volumes:
+  jenkins_home:
+
+Initial Setup:
+
+1. Access Jenkins:
+   - Open http://localhost:8080
+   - Get initial password from logs:
+     $ docker logs jenkins | grep "password"
+   - Or: cat /var/jenkins_home/secrets/initialAdminPassword
+
+2. Install Suggested Plugins:
+   - GitHub
+   - Pipeline
+   - Docker
+   - SSH
+   - Email
+
+3. Create Admin User:
+   - Username, password, email
+
+4. Configure System:
+   - Jenkins URL
+   - Email notifications
+
+
+4️⃣ JENKINS UI OVERVIEW
+──────────────────────
+
+Main Components:
+
+Dashboard:
+- Quick access to jobs
+- Build queue
+- Executor status
+- System information
+
+Job Management:
+- Create New Item
+- Configure job
+- Build triggers
+- Console output
+
+Manage Jenkins:
+- System Configuration
+- Plugin Management
+- User Management
+- Security Configuration
+- Backup & Restore
+
+Job Configuration:
+- Source Code Management (Git)
+- Build Triggers
+- Build steps
+- Post-build actions
+- Parameters
+
+SCM Configuration:
+- Repository URL: https://github.com/user/repo.git
+- Branch: */main
+- Credentials: SSH key or token
+- Poll SCM: Check changes periodically
+- Webhook: GitHub push triggers
+
+Build Triggers:
+- Poll SCM: "H */4 * * *" (every 4 hours)
+- GitHub Push: Webhook from GitHub
+- Build periodically: "0 0 * * *" (daily at midnight)
+- Build when another job finishes
+- Manual trigger
+
+Parameters:
+- String parameter: ${STRING_PARAM}
+- Choice parameter: ${CHOICE}
+- Boolean parameter: ${BOOLEAN}
+
+Pre-defined Variables:
+${BUILD_NUMBER}         # 1, 2, 3...
+${BUILD_ID}            # Unique ID
+${WORKSPACE}           # Build directory
+${GIT_COMMIT}          # Git commit hash
+${GIT_BRANCH}          # Git branch
+${JOB_NAME}            # Job name
+
+
+5️⃣ PLUGINS MANAGEMENT
+──────────────────────
+
+Installing Plugins:
+
+Via Web UI:
+1. Manage Jenkins → Manage Plugins
+2. Available tab
+3. Search for plugin
+4. Check and Install
+
+Popular Plugins:
+- Pipeline: Scripted/declarative pipelines
+- GitHub: GitHub integration
+- Docker: Docker support
+- SSH: SSH operations
+- Email: Email notifications
+- Slack: Slack notifications
+- JUnit: Test reporting
+- Cobertura: Code coverage
+- SonarQube: Code quality
+- Ansible: Configuration management
+
+Plugin Dependencies:
+- Jenkins automatically resolves dependencies
+- May require other plugins
+
+Updating Plugins:
+Manage Jenkins → Manage Plugins → Updates tab
+
+Rolling Back:
+- Delete plugin folder
+- Restart Jenkins
+
+
+6️⃣ JENKINS SECURITY
+───────────────────
+
+User Management:
+- Create users
+- Assign roles
+- Configure permissions
+
+Authentication:
+- Jenkins' own database
+- LDAP
+- OAuth (GitHub, Google)
+- SAML
+
+Authorization:
+- Matrix-based security
+- Project-based security
+- Role-based (requires plugin)
+
+Credential Storage:
+- Manage Jenkins → Manage Credentials
+- Username/password
+- SSH keys
+- API tokens
+- Secrets
+
+Using Credentials:
+- Reference in jobs: ${CREDENTIAL_ID}
+- Use in pipeline: credentials('credential-id')
+
+Security Configuration:
+- Disable script console for non-admins
+- Enable CSRF protection
+- Disable old protocols
+- Keep Jenkins updated
+
+Firewall:
+- Open port 8080 (UI)
+- Open port 50000 (agent communication)
+- Restrict access by IP
+
+
+PRACTICAL EXERCISE - JENKINS SETUP:
+===================================
+
+1. Run Jenkins in Docker:
+$ docker run -d -p 8080:8080 -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  --name jenkins \
+  jenkins/jenkins:lts
+
+2. Get initial password:
+$ docker logs jenkins | grep "password"
+
+3. Access Jenkins:
+- Open http://localhost:8080
+- Enter password
+- Install suggested plugins
+- Create admin user
+
+4. Create first job:
+- Dashboard → New Item
+- Enter name "test-job"
+- Select "Freestyle job"
+- In Build section → Add build step
+- Choose "Execute shell"
+- Type: echo "Hello Jenkins!"
+- Save and Build
+
+5. View console:
+- Click build number
+- Click "Console Output"
+- See your echo output
+
+6. Configure GitHub connection:
+- Manage Jenkins → Configure System
+- GitHub section → Add GitHub Servers
+- Enter GitHub credentials
+
+7. Install Docker plugin:
+- Manage Jenkins → Manage Plugins
+- Search "Docker"
+- Install plugin
+- Restart Jenkins
+
+
+REFERENCE COMMANDS:
+===================
+
+Docker Commands:
+$ docker run -d -p 8080:8080 jenkins/jenkins:lts
+$ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+$ docker logs -f jenkins
+$ docker stop jenkins
+$ docker rm jenkins
+$ docker volume ls
+$ docker volume rm jenkins_home
+
+Jenkins Configuration:
+- JENKINS_HOME: /var/jenkins_home (Docker)
+- Jobs stored in: $JENKINS_HOME/jobs/
+- Configuration: $JENKINS_HOME/config.xml
+- Credentials: $JENKINS_HOME/credentials.xml
+
+
+KEY CONCEPTS:
+=============
+✓ Jenkins = automation server
+✓ Master-Agent architecture
+✓ Distributed builds
+✓ Freestyle vs Pipeline jobs
+✓ Plugin ecosystem
+✓ Credential management
+✓ Security features
+✓ UI configuration
+✓ SCM integration
+✓ Build triggers
+✓ Pre-defined variables

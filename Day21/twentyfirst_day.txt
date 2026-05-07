@@ -1,0 +1,614 @@
+📚 DAY 21: DOCKER & JENKINS INTEGRATION
+========================================
+
+Unit VI: CI/CD with Jenkins
+Topics: Docker in Jenkins, Docker plugins, deployment flows
+
+1️⃣ DOCKER SUPPORT IN JENKINS
+────────────────────────────
+
+Docker Plugin:
+- Manage Jenkins → Manage Plugins
+- Search "Docker"
+- Install "Docker plugin" or "Docker Pipeline"
+
+Using Docker in Pipeline:
+pipeline {
+  agent {
+    docker {
+      image 'maven:3.8-openjdk-17'
+      args '-v /root/.m2:/root/.m2'
+    }
+  }
+  
+  stages {
+    stage('Build') {
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+  }
+}
+
+Docker with Volume Mounts:
+agent {
+  docker {
+    image 'maven:3.8-openjdk-17'
+    args '''-v /root/.m2:/root/.m2
+            -v /var/run/docker.sock:/var/run/docker.sock'''
+  }
+}
+
+Docker with Environment:
+agent {
+  docker {
+    image 'mysql:8'
+    args '-e MYSQL_ROOT_PASSWORD=root123'
+  }
+}
+
+Multiple Docker Containers:
+pipeline {
+  agent any
+  
+  stages {
+    stage('Build') {
+      agent {
+        docker {
+          image 'maven:3.8'
+          args '-u root'
+        }
+      }
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+    
+    stage('Test with Database') {
+      agent {
+        docker {
+          image 'ubuntu:22.04'
+          args '--link mysql:mysql'
+        }
+      }
+      steps {
+        sh 'apt-get update && apt-get install -y mysql-client'
+        sh 'mysql -h mysql -u root -proot123 -e "SHOW DATABASES"'
+      }
+    }
+  }
+}
+
+
+2️⃣ BUILDING DOCKER IMAGES IN JENKINS
+───────────────────────────────────────
+
+Using sh command:
+pipeline {
+  agent any
+  
+  environment {
+    DOCKER_REGISTRY = 'ghcr.io'
+    DOCKER_IMAGE = "${DOCKER_REGISTRY}/myapp"
+  }
+  
+  stages {
+    stage('Build Docker Image') {
+      steps {
+        script {
+          sh 'docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} .'
+          sh 'docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest'
+        }
+      }
+    }
+    
+    stage('Push to Registry') {
+      steps {
+        script {
+          withDockerRegistry([credentialsId: 'ghcr-credentials', url: "https://${DOCKER_REGISTRY}"]) {
+            sh 'docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}'
+            sh 'docker push ${DOCKER_IMAGE}:latest'
+          }
+        }
+      }
+    }
+  }
+}
+
+Using Docker Plugin:
+@Library('shared-library') _
+
+pipeline {
+  agent any
+  
+  stages {
+    stage('Build and Push') {
+      steps {
+        script {
+          def app = docker.build("myregistry/myapp:${env.BUILD_NUMBER}")
+          app.push()
+          app.push('latest')
+        }
+      }
+    }
+  }
+}
+
+Multi-stage Build:
+Dockerfile:
+FROM maven:3.8.4-openjdk-17 as builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+FROM openjdk:17-jdk-slim
+COPY --from=builder /app/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+Building:
+stages {
+  stage('Build Docker Image') {
+    steps {
+      sh '''
+        docker build \
+          --target builder \
+          -t myapp:builder-${BUILD_NUMBER} .
+        docker build \
+          -f Dockerfile \
+          -t myapp:${BUILD_NUMBER} .
+      '''
+    }
+  }
+}
+
+
+3️⃣ DOCKER INSIDE JENKINS AGENTS
+─────────────────────────────────
+
+Docker Daemon Access:
+- Mount /var/run/docker.sock in container
+- Allows Docker commands from within container
+
+Security Warning:
+- Mounting docker.sock = root access
+- Use only on trusted agents
+- Consider alternatives (Kaniko, Podman)
+
+Setup:
+pipeline {
+  agent {
+    docker {
+      image 'docker:dind'  # Docker in Docker
+      args '-u root -v /var/run/docker.sock:/var/run/docker.sock'
+    }
+  }
+  
+  stages {
+    stage('Build') {
+      steps {
+        sh 'docker ps'
+        sh 'docker build -t myapp:latest .'
+      }
+    }
+  }
+}
+
+Using Kaniko (Safer Alternative):
+pipeline {
+  agent any
+  
+  stages {
+    stage('Build with Kaniko') {
+      steps {
+        script {
+          docker.image('gcr.io/kaniko-project/executor:latest').inside() {
+            sh '/kaniko/executor --dockerfile Dockerfile \
+                --context . \
+                --destination myregistry/myapp:latest'
+          }
+        }
+      }
+    }
+  }
+}
+
+
+4️⃣ DOCKER HUB & GHCR INTEGRATION
+─────────────────────────────────
+
+Docker Hub Credentials:
+1. Go to Jenkins: Manage Jenkins → Manage Credentials
+2. Click "System" → "Global credentials"
+3. Add Credentials:
+   - Kind: "Username with password"
+   - Username: Your Docker Hub username
+   - Password: Docker Hub token (not password!)
+   - ID: docker-hub-credentials
+
+Using Docker Hub Credentials:
+pipeline {
+  agent any
+  
+  environment {
+    REGISTRY = 'docker.io'
+    IMAGE_NAME = 'your_username/myapp'
+  }
+  
+  stages {
+    stage('Push to Docker Hub') {
+      steps {
+        script {
+          withDockerRegistry([
+            credentialsId: 'docker-hub-credentials',
+            url: "https://${REGISTRY}"
+          ]) {
+            sh '''
+              docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
+              docker push ${IMAGE_NAME}:${BUILD_NUMBER}
+              docker push ${IMAGE_NAME}:latest
+            '''
+          }
+        }
+      }
+    }
+  }
+}
+
+GHCR Credentials:
+1. Generate GitHub Personal Access Token:
+   - Settings → Developer settings → Personal access tokens
+   - Scopes: write:packages, read:packages
+
+2. Add credentials in Jenkins:
+   - Kind: "Username with password"
+   - Username: Your GitHub username
+   - Password: Personal Access Token
+   - ID: ghcr-credentials
+
+Using GHCR:
+pipeline {
+  agent any
+  
+  environment {
+    REGISTRY = 'ghcr.io'
+    IMAGE_NAME = '${REGISTRY}/your_username/myapp'
+  }
+  
+  stages {
+    stage('Push to GHCR') {
+      steps {
+        script {
+          withDockerRegistry([
+            credentialsId: 'ghcr-credentials',
+            url: "https://${REGISTRY}"
+          ]) {
+            sh '''
+              docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
+              docker push ${IMAGE_NAME}:${BUILD_NUMBER}
+              docker push ${IMAGE_NAME}:latest
+            '''
+          }
+        }
+      }
+    }
+  }
+}
+
+
+5️⃣ JENKINS CI/CD DEPLOYMENT FLOWS
+──────────────────────────────────
+
+Build → Test → Deploy Flow:
+pipeline {
+  agent any
+  
+  environment {
+    DOCKER_REGISTRY = 'ghcr.io'
+    IMAGE = "${DOCKER_REGISTRY}/myapp"
+  }
+  
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    
+    stage('Build') {
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+    
+    stage('Test') {
+      parallel {
+        stage('Unit Tests') {
+          steps {
+            sh 'mvn test'
+          }
+        }
+        stage('Integration Tests') {
+          steps {
+            sh 'mvn verify'
+          }
+        }
+      }
+    }
+    
+    stage('Build Docker Image') {
+      steps {
+        script {
+          sh 'docker build -t ${IMAGE}:${BUILD_NUMBER} .'
+        }
+      }
+    }
+    
+    stage('Push to Registry') {
+      steps {
+        script {
+          withDockerRegistry([credentialsId: 'ghcr-credentials', url: "https://${DOCKER_REGISTRY}"]) {
+            sh 'docker push ${IMAGE}:${BUILD_NUMBER}'
+            sh 'docker tag ${IMAGE}:${BUILD_NUMBER} ${IMAGE}:latest'
+            sh 'docker push ${IMAGE}:latest'
+          }
+        }
+      }
+    }
+    
+    stage('Deploy to Staging') {
+      when {
+        branch 'develop'
+      }
+      steps {
+        script {
+          sshagent(['staging-ssh-key']) {
+            sh '''
+              ssh -o StrictHostKeyChecking=no user@staging-server \
+              "cd /app && docker pull ${IMAGE}:${BUILD_NUMBER} && \
+               docker-compose up -d"
+            '''
+          }
+        }
+      }
+    }
+    
+    stage('Deploy to Production') {
+      when {
+        branch 'main'
+      }
+      input {
+        message "Deploy to production?"
+        ok "Deploy"
+      }
+      steps {
+        script {
+          sshagent(['prod-ssh-key']) {
+            sh '''
+              ssh -o StrictHostKeyChecking=no user@prod-server \
+              "cd /app && docker pull ${IMAGE}:${BUILD_NUMBER} && \
+               docker-compose up -d"
+            '''
+          }
+        }
+      }
+    }
+  }
+  
+  post {
+    always {
+      junit 'target/surefire-reports/**/*.xml'
+      cleanWs()
+    }
+    failure {
+      mail to: 'team@example.com',
+           subject: "Build Failed: ${env.JOB_NAME}",
+           body: "Build ${env.BUILD_NUMBER} failed.\nCheck console output at ${env.BUILD_URL}"
+    }
+  }
+}
+
+
+6️⃣ WEBHOOK & AUTOMATED TRIGGERS
+────────────────────────────────
+
+GitHub Webhook Setup:
+1. Repository Settings → Webhooks → Add webhook
+2. Payload URL: http://your-jenkins.com/github-webhook/
+3. Content type: application/json
+4. Events: Push events, Pull request events
+5. Active: Yes
+
+Jenkins Configuration:
+pipeline {
+  triggers {
+    githubPush()
+  }
+}
+
+Poll SCM (Fallback):
+triggers {
+  pollSCM('H/15 * * * *')  # Check every 15 minutes
+}
+
+Build Parameterized Build:
+pipeline {
+  triggers {
+    parameterizedCron('''
+      H H * * * %VERSION=1.0.0;ENV=staging
+      H 0 * * 0 %VERSION=nightly;ENV=dev
+    ''')
+  }
+}
+
+
+COMPLETE PRODUCTION PIPELINE:
+=============================
+
+pipeline {
+  agent any
+  
+  environment {
+    DOCKER_REGISTRY = 'ghcr.io'
+    IMAGE_NAME = "${DOCKER_REGISTRY}/my-organization/myapp"
+    SONAR_HOST = credentials('sonar-host')
+    SONAR_TOKEN = credentials('sonar-token')
+  }
+  
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '10'))
+    disableConcurrentBuilds()
+    timeout(time: 1, unit: 'HOURS')
+    timestamps()
+  }
+  
+  triggers {
+    githubPush()
+    pollSCM('H */4 * * *')
+  }
+  
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    
+    stage('Build') {
+      agent {
+        docker {
+          image 'maven:3.8-openjdk-17'
+          args '-v /root/.m2:/root/.m2'
+        }
+      }
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+    
+    stage('Code Quality') {
+      steps {
+        script {
+          withSonarQubeEnv('SonarQube') {
+            sh 'mvn sonar:sonar'
+          }
+        }
+      }
+    }
+    
+    stage('Build Docker Image') {
+      steps {
+        script {
+          sh 'docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .'
+          sh 'docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest'
+        }
+      }
+    }
+    
+    stage('Push to Registry') {
+      steps {
+        script {
+          withDockerRegistry([credentialsId: 'ghcr-credentials', url: "https://${DOCKER_REGISTRY}"]) {
+            sh 'docker push ${IMAGE_NAME}:${BUILD_NUMBER}'
+            sh 'docker push ${IMAGE_NAME}:latest'
+          }
+        }
+      }
+    }
+    
+    stage('Deploy to Staging') {
+      when {
+        branch 'develop'
+      }
+      steps {
+        script {
+          sshagent(['staging-key']) {
+            sh 'ssh -o StrictHostKeyChecking=no deploy@staging-server ./deploy-staging.sh ${BUILD_NUMBER}'
+          }
+        }
+      }
+    }
+    
+    stage('Deploy to Production') {
+      when {
+        branch 'main'
+      }
+      input {
+        message "Deploy to production?"
+      }
+      steps {
+        script {
+          sshagent(['prod-key']) {
+            sh 'ssh -o StrictHostKeyChecking=no deploy@prod-server ./deploy-prod.sh ${BUILD_NUMBER}'
+          }
+        }
+      }
+    }
+  }
+  
+  post {
+    always {
+      junit 'target/surefire-reports/**/*.xml'
+      publishHTML(target: [
+        reportDir: 'target/site/jacoco',
+        reportFiles: 'index.html',
+        reportName: 'Code Coverage'
+      ])
+    }
+    failure {
+      mail to: 'devops@example.com',
+           subject: "Build Failed: ${env.JOB_NAME}",
+           body: "Build ${env.BUILD_NUMBER} failed.\nCommit: ${env.GIT_COMMIT}\nCheck: ${env.BUILD_URL}"
+      slackSend(color: 'danger', message: "Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+    }
+    success {
+      slackSend(color: 'good', message: "Build Successful: ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.IMAGE_NAME}:${env.BUILD_NUMBER}")
+    }
+  }
+}
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Set up Jenkins with Docker
+
+2. Configure credentials:
+   - GitHub SSH key
+   - Docker registry credentials
+   - SSH keys for servers
+
+3. Create Jenkinsfile:
+   - Checkout
+   - Build
+   - Test
+   - Build Docker image
+   - Push to registry
+   - Deploy (conditional)
+
+4. Push to GitHub
+
+5. Configure webhook in GitHub
+
+6. Trigger pipeline build
+
+7. Monitor Console Output
+
+
+SUMMARY - UNIT VI COMPLETED:
+============================
+✓ Jenkins fundamentals
+✓ Master-Agent architecture
+✓ Installation and setup
+✓ Freestyle vs Pipeline
+✓ Declarative pipelines
+✓ Scripted pipelines
+✓ Jenkinsfile
+✓ Docker integration
+✓ Building Docker images
+✓ Docker registry integration
+✓ Deployment flows
+✓ Webhooks and triggers
+✓ Production CI/CD pipeline

@@ -1,0 +1,165 @@
+📚 DAY 7: DOCKER NETWORKING - BRIDGE & HOST NETWORKS
+=======================================================
+
+Unit II: Image Building & Container Management
+Topics: Docker Networking fundamentals
+
+1️⃣ DOCKER NETWORKING BASICS
+────────────────────────────
+
+What is Docker Networking?
+- Enables communication between containers
+- Allows containers to communicate with host & external world
+- Provides isolation & security
+- Multiple network drivers available
+
+Network Drivers in Docker:
+✓ Bridge Network (default)
+✓ Host Network
+✓ Overlay Network (Swarm)
+✓ Macvlan Network
+✓ None Network
+✓ Custom Bridge Network
+
+
+2️⃣ BRIDGE NETWORKS
+──────────────────
+
+Default Bridge Network:
+- Every container connects to default bridge by default
+- Isolated from host
+- Containers get IP addresses from 172.17.0.0/16 range
+- Limited DNS support in default bridge
+
+Creating Custom Bridge Network:
+$ docker network create my-bridge
+
+$ docker network create --driver bridge custom-net
+
+Connecting Container to Bridge:
+$ docker run -d --name web1 --network custom-net nginx
+$ docker run -d --name web2 --network custom-net ubuntu
+
+Commands:
+$ docker network ls                    # List networks
+$ docker network inspect custom-net    # Inspect network
+$ docker network connect custom-net container_name    # Add container to network
+$ docker network disconnect custom-net container_name # Remove container from network
+
+
+3️⃣ HOST NETWORK
+──────────────
+
+What is Host Network?
+- Container uses host's network stack directly
+- No isolation from host
+- High performance
+- Shared ports with host
+- Linux only (limited on Windows/Mac)
+
+Using Host Network:
+$ docker run -d --network host nginx
+
+Advantages:
+✓ Better performance
+✓ Direct access to host network
+✓ No translation overhead
+
+Disadvantages:
+✗ No isolation
+✗ Port conflicts
+✗ Security risks
+
+
+4️⃣ CONTAINER LINKING
+───────────────────
+
+Legacy Linking (Deprecated but important to know):
+$ docker run -d --name db mysql
+$ docker run --link db:database web-app
+
+Using Environment Variables from linked containers:
+- Docker injects environment variables automatically
+
+Modern Approach - Custom Bridge:
+$ docker network create app-net
+$ docker run -d --name db --network app-net mysql
+$ docker run -d --name app --network app-net web-app
+$ ping db  # Works! DNS resolution built-in
+
+
+5️⃣ DNS INSIDE DOCKER
+────────────────────
+
+DNS Features:
+- Docker embedded DNS server at 127.0.0.11:53
+- Service discovery built-in
+- Container name = hostname on same network
+- Automatic load balancing
+
+Example - DNS Resolution:
+Network: app-net
+Containers: web1, web2, db
+
+From web1:
+$ ping web2          # Works - DNS resolves to web2's IP
+$ ping db            # Works - DNS resolves to db's IP
+
+
+6️⃣ PORT MAPPING
+───────────────
+
+Bridge Host to Container Ports:
+$ docker run -p 8080:80 nginx
+  Host port 8080 → Container port 80
+
+Multiple Port Mappings:
+$ docker run -p 8080:80 -p 3000:3000 -p 9000:9000 nginx
+
+Expose vs Publish:
+EXPOSE 80        (in Dockerfile - documentation only)
+-p 8080:80       (actually publishes the port)
+
+Binding to Specific Host IP:
+$ docker run -p 192.168.1.100:8080:80 nginx
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Create a custom bridge network:
+$ docker network create myapp-net
+
+2. Run MySQL container on this network:
+$ docker run -d \
+  --name db \
+  --network myapp-net \
+  -e MYSQL_ROOT_PASSWORD=root123 \
+  mysql:8
+
+3. Run a web container on same network:
+$ docker run -d \
+  --name web \
+  --network myapp-net \
+  -e DB_HOST=db \
+  nginx
+
+4. Test connectivity:
+$ docker exec web ping db
+$ docker exec web env | grep DB_HOST
+
+5. Inspect the network:
+$ docker network inspect myapp-net
+
+6. View network details:
+$ docker network ls
+$ docker network inspect myapp-net
+
+
+KEY CONCEPTS TO REMEMBER:
+=========================
+✓ Bridge network = default for most use cases
+✓ Host network = when you need maximum performance
+✓ DNS works within custom networks
+✓ Port mapping required to access from outside
+✓ Service discovery automatic with custom networks

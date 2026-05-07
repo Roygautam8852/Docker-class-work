@@ -1,0 +1,371 @@
+📚 DAY 11: ADVANCED DOCKER COMPOSE
+==================================
+
+Unit III: Microservices with Docker Compose
+Topics: Advanced compose features, secrets, configs, build vs image
+
+1️⃣ BUILD VS IMAGE IN DOCKER-COMPOSE
+──────────────────────────────────
+
+Using Pre-built Image:
+services:
+  web:
+    image: nginx:latest
+    # Pros: Fast startup, lightweight
+    # Cons: Limited customization
+
+Building from Dockerfile:
+services:
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    # Pros: Custom image, full control
+    # Cons: Slower initial build
+
+Build Arguments:
+services:
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+        BUILD_DATE: 2026-05-07
+
+In Dockerfile:
+ARG NODE_ENV=development
+ENV NODE_ENV=$NODE_ENV
+RUN npm install --production=$NODE_ENV
+
+Build Options:
+build:
+  context: ./app
+  dockerfile: Dockerfile.prod
+  cache_from:
+    - myregistry/app:latest
+  network: host
+
+
+2️⃣ ENVIRONMENT & SECRETS MANAGEMENT
+────────────────────────────────────
+
+Environment Variables (Plain Text):
+services:
+  db:
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: mydb
+
+Loading from File:
+env_file:
+  - .env
+  - .env.${ENVIRONMENT}
+
+Example .env file:
+DATABASE_URL=mysql://localhost:3306
+API_KEY=your_api_key_here
+SECRET_TOKEN=secret123
+
+Variable Substitution:
+services:
+  web:
+    image: nginx:latest
+    environment:
+      - APP_HOME=/app
+      - PORT=8080
+
+Using Host Variables:
+environment:
+  - USER=$USER
+  - HOME=$HOME
+
+
+Docker Compose Secrets (Best Practice):
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8
+    secrets:
+      - db_password
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_password
+
+secrets:
+  db_password:
+    file: ./db_password.txt
+    # Or from external source:
+    # external: true
+
+Secrets in Dockerfile:
+RUN --mount=type=secret,id=db_password \
+  echo "Password set from secret"
+
+
+Docker Compose Configs (Non-sensitive):
+version: '3.8'
+
+services:
+  app:
+    image: myapp:latest
+    configs:
+      - app_config
+    environment:
+      - CONFIG_PATH=/app/config/app.conf
+
+configs:
+  app_config:
+    file: ./app.conf
+    # Or from external:
+    # external: true
+
+
+3️⃣ SERVICE DEPENDENCIES & ORDERING
+──────────────────────────────────
+
+depends_on:
+services:
+  web:
+    image: nginx
+    depends_on:
+      - db
+      - cache
+    
+  db:
+    image: mysql:8
+  
+  cache:
+    image: redis:latest
+
+Issues with depends_on:
+- Starts services in order
+- But doesn't wait for readiness!
+- Web starts before DB is ready
+
+Solution - Healthcheck:
+services:
+  db:
+    image: mysql:8
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    image: nginx
+    depends_on:
+      db:
+        condition: service_healthy
+
+Condition Options:
+service_started       # Container started (default)
+service_healthy       # Healthcheck passed
+service_completed_successfully  # One-time service finished
+
+
+4️⃣ ADVANCED VOLUME MANAGEMENT
+─────────────────────────────
+
+Volume Drivers:
+volumes:
+  db_data:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=100m
+
+Mount Propagation:
+volumes:
+  - ./data:/app/data:rprivate    # Read-private (default)
+  - ./data:/app/data:rshared     # Read-shared
+  - ./data:/app/data:rslave      # Read-slave
+  - ./data:/app/data:rw          # Read-write
+
+
+Copy-on-Write Volume:
+volumes:
+  app_src:
+    driver: local
+  # Data copied on startup only
+
+
+5️⃣ NETWORKS & SERVICE DISCOVERY
+───────────────────────────────
+
+Multiple Networks:
+services:
+  web:
+    networks:
+      - frontend
+      - backend
+  
+  db:
+    networks:
+      - backend
+  
+  api:
+    networks:
+      - frontend
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+Network Options:
+networks:
+  mynet:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br0
+      com.docker.driver.mtu: 1450
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+
+6️⃣ RESTART POLICIES & HEALTH CHECKS
+────────────────────────────────────
+
+Restart Policies:
+no              # Don't auto-restart
+always          # Always restart
+on-failure      # Restart only on non-zero exit
+unless-stopped  # Always restart unless explicitly stopped
+
+Example:
+services:
+  web:
+    restart_policy:
+      condition: on-failure
+      delay: 5s
+      max_attempts: 5
+      window: 120s
+
+Health Checks:
+healthcheck:
+  test: ["CMD", "curl", "http://localhost"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+
+Health Status:
+starting   # Initial period
+healthy    # Test passed
+unhealthy  # Test failed
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Create project structure:
+$ mkdir microservices-demo
+$ cd microservices-demo
+
+2. Create Dockerfile for app:
+$ cat > Dockerfile << 'EOF'
+FROM node:18
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
+EOF
+
+3. Create simple Node app:
+$ cat > server.js << 'EOF'
+const http = require('http');
+const server = http.createServer((req, res) => {
+  res.end('Hello from App!');
+});
+server.listen(3000);
+EOF
+
+$ cat > package.json << 'EOF'
+{
+  "name": "app",
+  "version": "1.0.0",
+  "main": "server.js"
+}
+EOF
+
+4. Create .env file:
+$ cat > .env << 'EOF'
+MYSQL_ROOT_PASSWORD=root123
+MYSQL_DATABASE=appdb
+NODE_ENV=production
+EOF
+
+5. Create docker-compose.yml:
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: on-failure
+
+  db:
+    image: mysql:8
+    env_file: .env
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  db_data:
+
+networks:
+  app-network:
+    driver: bridge
+
+6. Deploy:
+$ docker-compose up -d --build
+
+7. Check status:
+$ docker-compose ps
+$ docker-compose logs -f
+
+8. Test connectivity:
+$ docker-compose exec app curl http://db:3306
+$ curl http://localhost:3000
+
+9. Clean up:
+$ docker-compose down -v
+
+
+KEY CONCEPTS:
+=============
+✓ Build context = image customization
+✓ Environment variables = configuration
+✓ Secrets = sensitive data management
+✓ Dependencies = service ordering
+✓ Healthchecks = readiness checking
+✓ Multiple networks = service segmentation
+✓ Restart policies = reliability
+✓ Volumes = data persistence

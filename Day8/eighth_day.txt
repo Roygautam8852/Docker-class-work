@@ -1,0 +1,225 @@
+📚 DAY 8: DOCKER STORAGE - VOLUMES & BIND MOUNTS
+================================================
+
+Unit II: Image Building & Container Management
+Topics: Docker Storage mechanisms
+
+1️⃣ DOCKER STORAGE OVERVIEW
+──────────────────────────
+
+Storage Problem:
+- Containers are ephemeral (temporary)
+- Data is lost when container is removed
+- Need persistent storage mechanism
+
+Storage Types:
+✓ Volumes (Managed by Docker)
+✓ Bind Mounts (Host filesystem)
+✓ tmpfs Mounts (Memory-based)
+
+
+2️⃣ VOLUMES - DOCKER MANAGED STORAGE
+───────────────────────────────────
+
+What are Volumes?
+- Completely managed by Docker
+- Stored in /var/lib/docker/volumes on Linux
+- Platform-independent
+- Can be shared between containers
+- Better performance on Windows/Mac
+
+Creating Volumes:
+$ docker volume create my-volume
+$ docker volume create --name db-data
+
+Listing Volumes:
+$ docker volume ls
+$ docker volume inspect my-volume
+
+Inspecting Volume:
+$ docker volume inspect db-data
+
+Running Container with Volume:
+$ docker run -d \
+  --name mysql \
+  -v db-data:/var/lib/mysql \
+  mysql:8
+
+Multiple Volumes:
+$ docker run -d \
+  -v db-data:/var/lib/mysql \
+  -v logs-data:/var/log \
+  mysql:8
+
+Volume Permissions:
+$ docker run -d \
+  -v db-data:/data:ro \
+  nginx  # read-only
+
+Removing Volumes:
+$ docker volume rm my-volume
+$ docker volume prune  # Remove unused volumes
+
+
+3️⃣ BIND MOUNTS
+───────────────
+
+What are Bind Mounts?
+- Direct access to host filesystem
+- More powerful than volumes
+- Can mount any directory
+- Host machine path directly accessible
+- Not managed by Docker
+
+Creating Bind Mount:
+$ docker run -d \
+  -v /path/on/host:/path/in/container \
+  nginx
+
+Absolute Path Required:
+$ docker run -d \
+  -v $(pwd)/data:/app/data \
+  ubuntu
+
+Read-Only Bind Mount:
+$ docker run -d \
+  -v /host/data:/container/data:ro \
+  nginx
+
+Use Cases:
+- Development: Local code → Container
+- Configuration files
+- Logs collection
+- Shared data between host and containers
+
+Bind Mount Example (Development):
+$ docker run -d \
+  --name myapp \
+  -v $(pwd):/app \
+  -w /app \
+  node:18 npm start
+
+
+4️⃣ VOLUMES vs BIND MOUNTS
+──────────────────────────
+
+                  Volumes        Bind Mounts
+  Management      Docker         Host OS
+  Performance     Better         Slightly slower
+  Portability     Yes            No
+  Platform        All            Path dependent
+  Editing         Limited        Full access
+  Backup          Easy           Manual
+  Security        Better         Host access
+
+When to Use:
+VOLUMES:
+✓ Production databases
+✓ Important data
+✓ Multi-container sharing
+✓ Cross-platform apps
+
+BIND MOUNTS:
+✓ Development mode
+✓ Source code
+✓ Configuration files
+✓ Temporary storage
+
+
+5️⃣ COPY-ON-WRITE (COW) MECHANISM
+─────────────────────────────────
+
+How Docker Images Work:
+- Images made of layers (Read-only)
+- Base layer (FROM)
+- Each instruction = new layer
+- Layers stacked on top
+
+Container Layer:
+- Writable layer on top
+- Only modifications stored here
+- Original layers untouched
+- Efficient storage usage
+
+Example:
+Layer 1: Ubuntu (Read-only)
+Layer 2: Apache (Read-only)
+Layer 3: Config (Read-only)
+─────────────────────────
+Container Layer: /tmp/myfile (Writable)
+
+Benefits:
+✓ Fast container startup
+✓ Minimal storage overhead
+✓ Efficient sharing
+✓ Quick image distribution
+
+
+6️⃣ PRACTICAL STORAGE OPERATIONS
+────────────────────────────────
+
+Creating Named Volume:
+$ docker volume create --driver local mydata
+
+Running MySQL with Volume:
+$ docker run -d \
+  --name mysql1 \
+  -e MYSQL_ROOT_PASSWORD=root123 \
+  -v mydata:/var/lib/mysql \
+  mysql:8
+
+Data Persistence Test:
+$ docker exec mysql1 mysql -u root -p -e "CREATE DATABASE test;"
+$ docker stop mysql1
+$ docker rm mysql1
+$ docker run -d \
+  --name mysql2 \
+  -e MYSQL_ROOT_PASSWORD=root123 \
+  -v mydata:/var/lib/mysql \
+  mysql:8
+$ docker exec mysql2 mysql -u root -p -e "SHOW DATABASES;" 
+  # 'test' database still exists!
+
+Sharing Volume Between Containers:
+$ docker run -d --name app1 -v shared:/data nginx
+$ docker run -d --name app2 -v shared:/data ubuntu
+$ docker exec app1 touch /data/file.txt
+$ docker exec app2 ls /data  # file.txt exists!
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Create a volume for persistent storage:
+$ docker volume create app-data
+
+2. Run two containers sharing the volume:
+$ docker run -d --name web1 -v app-data:/app nginx
+$ docker run -d --name web2 -v app-data:/app ubuntu
+
+3. Create test files:
+$ docker exec web1 touch /app/test.txt
+$ docker exec web2 ls /app
+
+4. Verify persistence:
+$ docker stop web1
+$ docker rm web1
+$ docker run -d --name web3 -v app-data:/app alpine
+$ docker exec web3 ls /app  # test.txt still there
+
+5. Bind mount current directory:
+$ docker run -d -v $(pwd):/workspace ubuntu
+$ docker inspect <container_id> | grep Mounts
+
+6. Clean up:
+$ docker volume prune
+$ docker volume rm app-data
+
+
+KEY CONCEPTS:
+=============
+✓ Volumes = Docker-managed, best for production
+✓ Bind Mounts = Host filesystem, best for development
+✓ COW mechanism = Efficient layer storage
+✓ Data persists across container lifecycle
+✓ Volumes can be shared between multiple containers

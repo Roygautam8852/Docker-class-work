@@ -1,0 +1,580 @@
+📚 DAY 24: HANDS-ON PRACTICALS & LAB 8-12 (FINAL)
+=================================================
+
+Practical Experiments from Syllabus (Continued)
+Topics: Docker Swarm, Networks, Jenkins, CI/CD
+
+PRACTICAL 8: DOCKER SWARM CLUSTER SETUP
+========================================
+
+Single Machine Swarm (Learning Environment):
+
+Step 1: Initialize Swarm
+$ docker swarm init
+
+Output:
+Swarm initialized: current node (xyzabc...) is now a manager.
+
+Step 2: Check Swarm Status
+$ docker node ls
+$ docker info | grep Swarm
+
+Step 3: Create Service
+$ docker service create --name webserver \
+  --replicas 3 \
+  --publish 8080:80 \
+  nginx:latest
+
+Step 4: Monitor Service
+$ docker service ls
+$ docker service ps webserver
+
+Step 5: Check Node Details
+$ docker node inspect self
+$ docker node ps  # Tasks on this node
+
+Multi-Machine Swarm (Production):
+
+Manager Machine:
+$ docker swarm init --advertise-addr 192.168.1.100
+
+Get Worker Token:
+$ docker swarm join-token worker
+
+Worker Machine(s):
+$ docker swarm join --token SWMTKN-1-xxx... 192.168.1.100:2377
+
+Verify Cluster:
+$ docker node ls
+
+Promote Worker to Manager:
+$ docker node promote worker-1
+$ docker node promote worker-2
+
+Demote Manager to Worker:
+$ docker node demote manager-2
+
+Leave Swarm:
+$ docker swarm leave --force  # On manager
+$ docker swarm leave          # On worker
+
+
+PRACTICAL 9: DOCKER SWARM - CREATE SERVICE
+===========================================
+
+Create Service with Multiple Options:
+$ docker service create \
+  --name myapp \
+  --replicas 3 \
+  --publish 8080:3000 \
+  --env NODE_ENV=production \
+  --limit-cpu 0.5 \
+  --limit-memory 256M \
+  --reserve-cpu 0.25 \
+  --reserve-memory 128M \
+  --restart-condition on-failure \
+  --restart-max-attempts 3 \
+  myapp:latest
+
+Service Management:
+
+List services:
+$ docker service ls
+
+Service details:
+$ docker service inspect myapp
+
+Service logs:
+$ docker service logs myapp
+
+Service tasks:
+$ docker service ps myapp
+
+Update replicas:
+$ docker service update --replicas 5 myapp
+
+Update image:
+$ docker service update --image myapp:v1.1 myapp
+
+Update port:
+$ docker service update --publish-add 9000:3000 myapp
+
+Update constraints:
+$ docker service update \
+  --constraint-add node.labels.type==production \
+  myapp
+
+Remove service:
+$ docker service rm myapp
+
+Rolling Update Example:
+$ docker service update \
+  --image myapp:v1.1 \
+  --update-parallelism 1 \
+  --update-delay 10s \
+  myapp
+
+
+PRACTICAL 10: DOCKER NETWORKS & SERVICES
+=========================================
+
+Create Overlay Network:
+$ docker network create --driver overlay backend
+
+Create Multiple Services on Same Network:
+
+Frontend Service:
+$ docker service create \
+  --name frontend \
+  --replicas 2 \
+  --network backend \
+  --publish 80:80 \
+  nginx:latest
+
+Backend Service:
+$ docker service create \
+  --name api \
+  --replicas 3 \
+  --network backend \
+  -e FRONTEND_URL=http://frontend \
+  myapi:latest
+
+Database Service:
+$ docker service create \
+  --name db \
+  --replicas 1 \
+  --network backend \
+  -e MYSQL_ROOT_PASSWORD=root123 \
+  mysql:8
+
+Service Discovery Test:
+
+Connect to frontend:
+$ docker exec <frontend_container_id> \
+  curl http://api:3000
+
+DNS Resolution:
+$ docker exec <container_id> \
+  nslookup api
+
+Check network:
+$ docker network inspect backend
+
+Isolate Services:
+
+Frontend network (public):
+$ docker network create --driver overlay frontend
+
+Backend network (private):
+$ docker network create --driver overlay backend
+
+Multi-network Service:
+$ docker service create \
+  --name web \
+  --replicas 2 \
+  --network frontend \
+  --network backend \
+  nginx:latest
+
+
+PRACTICAL 11: INTRODUCTION TO CONTINUOUS INTEGRATION
+====================================================
+
+CI Concepts:
+- Automated builds
+- Automated testing
+- Automated deployment
+- Code quality checks
+- Fast feedback
+
+Jenkins CI Setup (Docker):
+$ docker run -d -p 8080:8080 -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  --name jenkins \
+  jenkins/jenkins:lts
+
+Access Jenkins:
+- Open http://localhost:8080
+- Get password: docker logs jenkins | grep "password"
+- Complete setup wizard
+- Install suggested plugins
+
+Create First Job:
+1. Dashboard → New Item
+2. Name: "build-test"
+3. Type: "Freestyle job"
+4. Source Code Management: Git
+5. Repository URL: https://github.com/user/repo.git
+6. Build Triggers: GitHub Push (if using GitHub)
+7. Build Steps: Execute Shell
+   - Command: ./build.sh
+8. Post-build Actions: Archive artifacts
+9. Save and Build
+
+Build Triggers:
+- Manual
+- SCM polling: "H/15 * * * *"
+- GitHub webhook
+
+Build Configuration:
+name: continuous_integration
+
+steps:
+  - name: Checkout
+    script: git clone https://github.com/user/repo.git
+
+  - name: Build
+    script: |
+      cd repo
+      mvn clean package
+
+  - name: Test
+    script: |
+      cd repo
+      mvn test
+
+  - name: Archive
+    script: |
+      cp repo/target/*.jar artifacts/
+
+  - name: Notify
+    script: |
+      echo "Build completed"
+      curl -X POST webhook_url -d "build=success"
+
+
+PRACTICAL 12: JENKINS ARCHITECTURE & MANAGING NODES
+===================================================
+
+Jenkins Master Setup:
+$ docker run -d \
+  -p 8080:8080 \
+  -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  -e JAVA_OPTS="-Xmx1g" \
+  --name jenkins \
+  jenkins/jenkins:lts
+
+Jenkins Agents (Linux):
+
+1. Create agent user:
+$ sudo useradd -m -s /bin/bash jenkins-agent
+$ sudo su - jenkins-agent
+$ mkdir ~/.ssh
+
+2. Copy SSH public key from master:
+$ ssh-keygen -t rsa -b 4096 -f ~/.ssh/jenkins_rsa
+$ cat ~/.ssh/jenkins_rsa.pub > ~/.ssh/authorized_keys
+
+3. Create working directory:
+$ mkdir -p /home/jenkins-agent/jenkins
+
+4. Setup Agent in Jenkins Web UI:
+- Manage Jenkins → Manage Nodes and Clouds
+- New Node
+- Name: linux-agent-1
+- Type: Permanent Agent
+- Remote root directory: /home/jenkins-agent/jenkins
+- Launch method: Launch agents via SSH
+- Host: agent_ip_address
+- Credentials: Jenkins SSH credentials
+- Host Key Verification: Non verifying
+
+5. Verify Agent Connected:
+$ docker exec jenkins curl localhost:8080/api/json | grep nodes
+
+Agent Labeling:
+- In agent config → Labels: "linux docker java17"
+
+Using Labels in Jobs:
+- Restrict where this project can be run
+- Label expression: linux && docker
+
+Agent Commands:
+- agent { label 'linux' }
+- agent { label 'docker || kubernetes' }
+- agent { label 'linux && java17 && docker' }
+
+Remove Agent:
+- Manage Jenkins → Manage Nodes
+- Click agent name
+- Delete
+
+Monitoring Agents:
+$ docker exec jenkins curl localhost:8080/computer/api/json
+
+
+CI/CD PIPELINE EXAMPLE:
+======================
+
+Jenkinsfile (Scripted):
+pipeline {
+  agent any
+  
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    
+    stage('Build') {
+      agent { label 'docker' }
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+    
+    stage('Test') {
+      parallel {
+        stage('Unit Tests') {
+          steps {
+            sh 'mvn test'
+          }
+        }
+        stage('Integration Tests') {
+          steps {
+            sh 'mvn verify'
+          }
+        }
+      }
+    }
+    
+    stage('Build Image') {
+      steps {
+        sh 'docker build -t myapp:${BUILD_NUMBER} .'
+      }
+    }
+    
+    stage('Push to Registry') {
+      steps {
+        script {
+          withDockerRegistry([credentialsId: 'docker-hub']) {
+            sh 'docker push myapp:${BUILD_NUMBER}'
+          }
+        }
+      }
+    }
+    
+    stage('Deploy to Staging') {
+      when {
+        branch 'develop'
+      }
+      steps {
+        sshagent(['staging-ssh']) {
+          sh 'ssh deploy@staging-server "cd /app && docker pull myapp:${BUILD_NUMBER} && docker-compose up -d"'
+        }
+      }
+    }
+    
+    stage('Deploy to Production') {
+      when {
+        branch 'main'
+      }
+      input {
+        message "Deploy to production?"
+        ok "Deploy"
+      }
+      steps {
+        sshagent(['prod-ssh']) {
+          sh 'ssh deploy@prod-server "cd /app && docker pull myapp:${BUILD_NUMBER} && docker-compose up -d"'
+        }
+      }
+    }
+  }
+  
+  post {
+    always {
+      junit 'target/surefire-reports/**/*.xml'
+      cleanWs()
+    }
+    failure {
+      mail to: 'team@example.com',
+           subject: "Build Failed: ${env.JOB_NAME}",
+           body: "Build ${env.BUILD_NUMBER} failed.\nCheck ${env.BUILD_URL}"
+    }
+  }
+}
+
+
+COMPLETE HANDS-ON LAB:
+====================
+
+Lab: Deploy Multi-tier Application
+
+1. Create Repository:
+$ mkdir devops-project
+$ cd devops-project
+$ git init
+
+2. Create Application Structure:
+├── Dockerfile
+├── docker-compose.yml
+├── Jenkinsfile
+├── src/
+│   └── app.py
+├── tests/
+│   └── test_app.py
+└── scripts/
+    └── deploy.sh
+
+3. Create Dockerfile:
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY src .
+EXPOSE 5000
+CMD ["python", "app.py"]
+
+4. Create docker-compose.yml:
+version: '3.9'
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_HOST=db
+    depends_on:
+      - db
+  db:
+    image: mysql:8
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+
+5. Create Jenkinsfile with full pipeline
+
+6. Create GitHub webhook
+
+7. Push to GitHub:
+$ git add .
+$ git commit -m "Add CI/CD pipeline"
+$ git push -u origin main
+
+8. Configure Jenkins:
+- Create GitHub-integrated job
+- Add repository
+- Set webhook
+- Configure credentials
+
+9. Test Pipeline:
+- Make code change
+- Push to GitHub
+- Watch Jenkins build
+- Verify deployment
+
+10. Monitor Results:
+$ docker logs -f jenkins
+$ docker ps  # See deployed containers
+$ curl http://localhost:5000
+
+
+FINAL PROJECT CHECKLIST:
+=======================
+
+Essential Tasks Completed:
+✓ Docker fundamentals
+✓ Image creation
+✓ Container management
+✓ Docker Compose
+✓ Microservices
+✓ Maven builds
+✓ GitHub Actions
+✓ Jenkins pipelines
+✓ Docker Swarm
+✓ CI/CD automation
+✓ Container orchestration
+✓ Deployment strategies
+
+Advanced Topics (Optional):
+□ Kubernetes basics
+□ Helm charts
+□ Service mesh
+□ GitOps workflows
+□ Advanced networking
+□ Security scanning
+□ Monitoring & logging
+□ Backup & recovery
+
+
+REFERENCES & NEXT STEPS:
+=======================
+
+Learning Resources:
+- Docker Official Documentation: https://docs.docker.com
+- Docker Hub: https://hub.docker.com
+- Jenkins Documentation: https://www.jenkins.io/doc
+- GitHub Actions: https://docs.github.com/en/actions
+
+Recommended Reading:
+- Docker Deep Dive by Nigel Poulton
+- Jenkins Continuous Integration Cookbook by Alan Berg
+- Docker: Up and Running by Karl Matthias & Sean Kane
+- Jenkins 2 Up and Running by Brent Laster
+
+Practice Projects:
+1. Multi-tier web application
+2. Microservices architecture
+3. CI/CD pipeline from scratch
+4. Kubernetes cluster deployment
+5. Container monitoring solution
+6. GitOps implementation
+7. Disaster recovery setup
+8. Security hardening
+
+
+COURSE COMPLETION SUMMARY:
+=========================
+
+Unit I: DevOps Infrastructure Concepts ✓
+Unit II: Image Building & Container Management ✓
+Unit III: Microservices with Docker Compose ✓
+Unit IV: Maven Build Automation ✓
+Unit V: CI with GitHub Actions ✓
+Unit VI: CI/CD with Jenkins ✓
+
+Practical Exercises Completed:
+1. Docker Installation ✓
+2. Docker Hub Account & Images ✓
+3. Dockerfile Creation ✓
+4. Storage & Linking ✓
+5. Microservices ✓
+6. Docker Compose ✓
+7. Orchestration ✓
+8. Swarm Cluster ✓
+9. Swarm Services ✓
+10. Docker Networks ✓
+11. CI/CD Concepts ✓
+12. Jenkins Setup ✓
+
+Skills Acquired:
+✓ Container fundamentals
+✓ Docker image management
+✓ Multi-container orchestration
+✓ Automated builds with Maven
+✓ CI/CD with GitHub Actions
+✓ CI/CD with Jenkins
+✓ Docker Swarm clustering
+✓ Microservices architecture
+✓ Container networking
+✓ Storage management
+✓ Deployment automation
+✓ Infrastructure as Code
+
+Ready for:
+→ DevOps Engineering roles
+→ Container architect positions
+→ Full-stack development
+→ Cloud infrastructure roles
+→ Site Reliability Engineer (SRE) roles
+→ Advanced Kubernetes training
+
+
+🎓 COURSE COMPLETE! 🎓
+
+Congratulations on completing the Docker DevOps course!
+You now have comprehensive knowledge of containerization,
+orchestration, and CI/CD practices.
+
+Continue learning and building real-world projects!

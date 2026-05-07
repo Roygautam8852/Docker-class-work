@@ -1,0 +1,275 @@
+📚 DAY 9: DOCKER REGISTRIES & IMAGE DISTRIBUTION
+==================================================
+
+Unit II: Image Building & Container Management
+Topics: Docker Hub, GHCR, Private Registries, Authentication
+
+1️⃣ DOCKER REGISTRIES OVERVIEW
+─────────────────────────────
+
+What is a Registry?
+- Centralized repository for Docker images
+- Stores and distributes container images
+- Public or private
+- Similar to GitHub for code
+
+Registry Types:
+✓ Docker Hub (Public, default)
+✓ GitHub Container Registry (GHCR)
+✓ Amazon ECR (AWS)
+✓ Google Container Registry (GCR)
+✓ Private Registries (Self-hosted)
+
+Image Naming Convention:
+[REGISTRY]/[USERNAME]/[REPOSITORY]:[TAG]
+
+Examples:
+docker.io/library/ubuntu:20.04
+ghcr.io/myuser/myapp:v1.0
+localhost:5000/myapp:latest
+
+
+2️⃣ DOCKER HUB - PUBLIC REGISTRY
+───────────────────────────────
+
+What is Docker Hub?
+- Official Docker registry
+- Default registry
+- Public images freely available
+- Private repositories available (paid)
+
+Creating Docker Hub Account:
+1. Visit https://hub.docker.com
+2. Sign up with email/username
+3. Verify email
+4. Create repositories
+
+Pushing to Docker Hub:
+Step 1: Tag your image
+$ docker tag myapp:1.0 username/myapp:1.0
+
+Step 2: Login to Docker Hub
+$ docker login
+Username: your_username
+Password: your_password
+
+Step 3: Push image
+$ docker push username/myapp:1.0
+
+Pulling from Docker Hub:
+$ docker pull ubuntu:20.04  # Full name: docker.io/library/ubuntu:20.04
+$ docker pull username/myapp:1.0
+
+Checking Your Images on Docker Hub:
+- Go to https://hub.docker.com
+- View repositories, tags, pull count
+- Set public/private visibility
+
+Tagging Best Practices:
+$ docker tag myapp:1.0 username/myapp:latest
+$ docker tag myapp:1.0 username/myapp:1.0
+$ docker tag myapp:1.0 username/myapp:1.0-prod
+$ docker push username/myapp --all-tags
+
+
+3️⃣ GITHUB CONTAINER REGISTRY (GHCR)
+──────────────────────────────────
+
+What is GHCR?
+- GitHub's container registry
+- Integrated with GitHub Actions
+- Private by default
+- Free for public repositories
+
+Authentication with GHCR:
+
+Generate Personal Access Token:
+1. Go to GitHub Settings → Developer settings → Personal access tokens
+2. Create new token with permissions:
+   - write:packages
+   - read:packages
+   - delete:packages
+3. Copy token
+
+Login to GHCR:
+$ docker login ghcr.io
+Username: your_github_username
+Password: your_personal_access_token
+
+Pushing to GHCR:
+$ docker tag myapp:1.0 ghcr.io/your_github_username/myapp:1.0
+$ docker push ghcr.io/your_github_username/myapp:1.0
+
+Pulling from GHCR:
+$ docker pull ghcr.io/your_github_username/myapp:1.0
+
+GHCR Benefits:
+✓ Integrated with GitHub
+✓ Works seamlessly with GitHub Actions
+✓ Better for open-source projects
+✓ Automatic cleanup policies
+
+
+4️⃣ PRIVATE REGISTRIES
+─────────────────────
+
+Why Private Registries?
+- Security (proprietary images)
+- Internal company use
+- Air-gapped environments
+- Full control
+
+Setting Up Local Registry:
+$ docker run -d \
+  -p 5000:5000 \
+  --name registry \
+  -v registry-data:/var/lib/registry \
+  registry:2
+
+Using Local Registry:
+$ docker tag myapp:1.0 localhost:5000/myapp:1.0
+$ docker push localhost:5000/myapp:1.0
+$ docker pull localhost:5000/myapp:1.0
+
+Pushing to Private Registry with Authentication:
+$ docker login private-registry.com
+
+Private Registry Software Options:
+✓ Harbor (Most popular)
+✓ Nexus Repository
+✓ GitLab Container Registry
+✓ Quay.io
+✓ JFrog Artifactory
+
+
+5️⃣ AUTHENTICATION & ACCESS TOKENS
+──────────────────────────────────
+
+Docker Login:
+$ docker login [REGISTRY_URL]
+
+Logging Out:
+$ docker logout [REGISTRY_URL]
+
+Credentials Storage:
+- Stored in ~/.docker/config.json (encrypted)
+- Base64 encoded (not secure!)
+- Better: Use credential helpers
+
+Using Credential Helper (Linux/Mac):
+$ docker-credential-pass configure
+
+Token Types:
+
+Docker Hub Token:
+- Personal Access Token (PAT)
+- Read/Write/Delete permissions
+- Can be scoped per repository
+
+GitHub Token (for GHCR):
+- Personal Access Token (PAT)
+- Permissions: write:packages, read:packages
+- Can be fine-grained tokens
+
+AWS ECR:
+- IAM credentials
+- Temporary auth tokens
+- aws ecr get-login-password
+
+Dockerfile Credentials (Best Practices):
+✗ NEVER hardcode credentials in Dockerfile
+✓ Use build-time secrets (Docker BuildKit)
+✗ NEVER commit credentials to Git
+
+Using BuildKit Secrets:
+$ docker build \
+  --secret registry_token=/path/to/token \
+  -t myapp .
+
+In Dockerfile:
+RUN --mount=type=secret,id=registry_token \
+  cat /run/secrets/registry_token
+
+
+6️⃣ IMAGE TAGGING & VERSIONING
+──────────────────────────────
+
+Tagging Strategy:
+$ docker tag myapp:1.0.0 username/myapp:1.0.0
+$ docker tag myapp:1.0.0 username/myapp:1.0
+$ docker tag myapp:1.0.0 username/myapp:latest
+
+Semantic Versioning:
+MAJOR.MINOR.PATCH
+1.0.0 = v1 (major), 0 (minor), 0 (patch)
+
+Example Tags:
+- username/app:v1.0.0 (exact version)
+- username/app:v1.0 (minor version)
+- username/app:v1 (major version)
+- username/app:latest (latest release)
+- username/app:stable (stable release)
+- username/app:dev (development)
+- username/app:prod (production)
+
+Environment-based Tags:
+$ docker tag myapp:build dev.registry.com/myapp:dev
+$ docker tag myapp:build prod.registry.com/myapp:v1.0.0
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Create Docker Hub Account & Repository:
+   - Go to https://hub.docker.com
+   - Create free account
+   - Create public repository "myapp"
+
+2. Create a simple Dockerfile:
+   $ mkdir ~/docker-demo
+   $ cd ~/docker-demo
+   
+   Dockerfile:
+   FROM nginx:latest
+   COPY index.html /usr/share/nginx/html/
+
+   index.html:
+   <h1>Hello Docker!</h1>
+
+3. Build and tag image:
+   $ docker build -t myapp:1.0 .
+
+4. Login to Docker Hub:
+   $ docker login
+   [Enter username and password]
+
+5. Tag for Docker Hub:
+   $ docker tag myapp:1.0 YOUR_USERNAME/myapp:1.0
+   $ docker tag myapp:1.0 YOUR_USERNAME/myapp:latest
+
+6. Push to Docker Hub:
+   $ docker push YOUR_USERNAME/myapp:1.0
+   $ docker push YOUR_USERNAME/myapp:latest
+
+7. Verify on Docker Hub:
+   - Go to https://hub.docker.com/repositories
+   - See your pushed images
+
+8. Pull and test:
+   $ docker pull YOUR_USERNAME/myapp:latest
+   $ docker run -d -p 8080:80 YOUR_USERNAME/myapp:latest
+   $ curl http://localhost:8080
+
+9. Clean up:
+   $ docker logout
+
+
+KEY CONCEPTS:
+=============
+✓ Registries = central storage for images
+✓ Docker Hub = default public registry
+✓ GHCR = GitHub's container registry
+✓ Private registries = full control
+✓ Authentication = tokens and credentials
+✓ Tags = version management
+✓ Never hardcode credentials!

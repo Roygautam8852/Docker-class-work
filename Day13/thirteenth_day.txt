@@ -1,0 +1,314 @@
+📚 DAY 13: MAVEN BUILD AUTOMATION FUNDAMENTALS
+==============================================
+
+Unit IV: Maven Build Automation
+Topics: Why build tools, Project Object Model, Directory structure
+
+1️⃣ WHY BUILD TOOLS EXIST
+────────────────────────
+
+Problems Without Build Tools:
+✗ Manual compilation is tedious
+✗ Dependency management becomes nightmare
+✗ Version conflicts difficult to resolve
+✗ Testing, packaging hard to automate
+✗ Deployment steps unclear
+✗ No reproducible builds
+✗ Difficult to maintain consistency
+
+Solutions Build Tools Provide:
+✓ Automated compilation
+✓ Automatic dependency resolution
+✓ Version management
+✓ Standardized structure
+✓ Build lifecycle management
+✓ Plugin ecosystem
+✓ Reproducible builds
+✓ Testing automation
+✓ Deployment automation
+
+Popular Build Tools:
+- Maven (Java, XML-based)
+- Gradle (Java, Groovy-based)
+- Ant (Older, task-based)
+- npm (JavaScript)
+- Cargo (Rust)
+- Make (C/C++)
+
+
+2️⃣ PROJECT OBJECT MODEL (POM)
+─────────────────────────────
+
+What is POM?
+- XML file (pom.xml)
+- Defines project metadata
+- Dependencies declaration
+- Build configuration
+- Plugin configuration
+
+Basic POM Structure:
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  
+  <groupId>com.example</groupId>
+  <artifactId>my-app</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  
+  <name>My Application</name>
+  <description>Sample Maven application</description>
+  
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.target>17</maven.compiler.target>
+  </properties>
+  
+  <dependencies>
+    <!-- Dependencies here -->
+  </dependencies>
+  
+  <build>
+    <plugins>
+      <!-- Plugins here -->
+    </plugins>
+  </build>
+</project>
+
+Key Elements:
+- groupId: Organization identifier (reverse domain)
+- artifactId: Project name
+- version: Project version
+- packaging: jar/war/pom
+- properties: Variable definitions
+
+
+3️⃣ MAVEN DIRECTORY STRUCTURE
+────────────────────────────
+
+Standard Structure:
+my-app/
+├── pom.xml                      # Project configuration
+├── src/
+│   ├── main/
+│   │   ├── java/                # Source code
+│   │   │   └── com/example/
+│   │   │       ├── App.java
+│   │   │       └── Utils.java
+│   │   └── resources/           # Configuration files
+│   │       ├── application.properties
+│   │       └── config.xml
+│   └── test/
+│       ├── java/                # Test code
+│       │   └── com/example/
+│       │       └── AppTest.java
+│       └── resources/           # Test resources
+│           └── test-config.properties
+└── target/                      # Build output (auto-generated)
+    ├── classes/                 # Compiled classes
+    ├── test-classes/
+    └── my-app-1.0.0.jar
+
+
+4️⃣ BUILD LIFECYCLE & PHASES
+───────────────────────────
+
+Maven Build Lifecycle Phases:
+Validate   → Validate project correct
+Compile    → Compile source code
+Test       → Run unit tests
+Package    → Create JAR/WAR
+Verify     → Run integration tests
+Install    → Install to local repo
+Deploy     → Deploy to remote repo
+
+Execution:
+$ mvn validate               # Just validate
+$ mvn compile               # Validate + Compile
+$ mvn test                  # Validate + Compile + Test
+$ mvn package               # Full build up to packaging
+$ mvn verify                # Package + Integration tests
+$ mvn install               # Install locally
+$ mvn deploy                # Deploy to repository
+
+Default Command:
+$ mvn                       # Runs default phase (install)
+
+Skipping Phases:
+$ mvn install -DskipTests   # Skip testing
+$ mvn compile -DskipTests   # Only compile
+
+Clean Lifecycle:
+$ mvn clean                 # Remove target directory
+$ mvn clean install         # Clean + Full build
+
+
+5️⃣ DEPENDENCIES & VERSION MANAGEMENT
+────────────────────────────────────
+
+Declaring Dependencies:
+<dependencies>
+  <dependency>
+    <groupId>org.springframework</groupId>
+    <artifactId>spring-core</artifactId>
+    <version>6.0.0</version>
+  </dependency>
+  
+  <dependency>
+    <groupId>junit</groupId>
+    <artifactId>junit</artifactId>
+    <version>4.13.2</version>
+    <scope>test</scope>
+  </dependency>
+</dependencies>
+
+Dependency Scope:
+- compile (default): Available everywhere
+- provided: Compile-time only, provided at runtime
+- runtime: Not needed at compile-time
+- test: Only for testing
+- system: From filesystem
+
+Dependency Hierarchy:
+myapp depends on libA (v1.0)
+libA depends on libB (v2.0)
+libC depends on libB (v1.0)
+
+Maven resolution: Could be conflict!
+
+Transitive Dependencies:
+- Maven automatically includes dependencies of dependencies
+- Can exclude specific ones:
+
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-core</artifactId>
+  <version>6.0.0</version>
+  <exclusions>
+    <exclusion>
+      <groupId>commons-logging</groupId>
+      <artifactId>commons-logging</artifactId>
+    </exclusion>
+  </exclusions>
+</dependency>
+
+Dependency Management:
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>6.0.0</version>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+
+Then in child projects:
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-core</artifactId>
+  <!-- Version inherited from parent -->
+</dependency>
+
+
+6️⃣ MAVEN PROPERTIES & PROFILES
+──────────────────────────────
+
+Properties:
+<properties>
+  <java.version>17</java.version>
+  <maven.compiler.source>17</maven.compiler.source>
+  <maven.compiler.target>17</maven.compiler.target>
+  <spring.version>6.0.0</spring.version>
+  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+</properties>
+
+Usage:
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-core</artifactId>
+  <version>${spring.version}</version>
+</dependency>
+
+Profiles (Environment-specific):
+<profiles>
+  <profile>
+    <id>development</id>
+    <properties>
+      <env>dev</env>
+      <db.url>localhost:3306</db.url>
+    </properties>
+  </profile>
+  
+  <profile>
+    <id>production</id>
+    <properties>
+      <env>prod</env>
+      <db.url>prod-db.example.com</db.url>
+    </properties>
+  </profile>
+</profiles>
+
+Using Profiles:
+$ mvn install -P development
+$ mvn install -P production
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Install Maven:
+Windows: https://maven.apache.org/download.cgi
+Then set PATH to maven/bin
+
+2. Verify installation:
+$ mvn --version
+
+3. Create project from archetype:
+$ mvn archetype:generate \
+  -DgroupId=com.example \
+  -DartifactId=my-app \
+  -DarchetypeArtifactId=maven-archetype-quickstart \
+  -DinteractiveMode=false
+
+4. Navigate to project:
+$ cd my-app
+
+5. View generated POM:
+$ cat pom.xml
+
+6. Compile project:
+$ mvn compile
+
+7. Run tests:
+$ mvn test
+
+8. Package application:
+$ mvn package
+
+9. View built artifact:
+$ ls -la target/
+$ java -jar target/my-app-1.0-SNAPSHOT.jar
+
+10. Install to local repository:
+$ mvn install
+
+11. Clean build:
+$ mvn clean install
+
+
+KEY CONCEPTS:
+=============
+✓ Maven = Build automation tool
+✓ POM = Project configuration file
+✓ Standard directory structure
+✓ Build lifecycle with phases
+✓ Dependency management
+✓ Version conflict resolution
+✓ Properties for configuration
+✓ Profiles for environments
+✓ Transitive dependencies
+✓ Plugins for extensibility

@@ -1,0 +1,421 @@
+📚 DAY 15: MAVEN BUILD STRATEGIES & CI/CD INTEGRATION
+===================================================
+
+Unit IV: Maven Build Automation
+Topics: Build strategies, Dependency Management, Advanced Patterns
+
+1️⃣ PARENT POM & MULTI-MODULE PROJECTS
+─────────────────────────────────────
+
+Multi-module Project Structure:
+my-organization/
+├── pom.xml (Parent POM)
+├── api/
+│   └── pom.xml
+├── core/
+│   └── pom.xml
+├── web/
+│   └── pom.xml
+└── test/
+    └── pom.xml
+
+Parent POM (pom.xml):
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  
+  <groupId>com.example</groupId>
+  <artifactId>my-org</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+  
+  <modules>
+    <module>api</module>
+    <module>core</module>
+    <module>web</module>
+    <module>test</module>
+  </modules>
+  
+  <properties>
+    <java.version>17</java.version>
+    <spring.version>6.0.0</spring.version>
+    <junit.version>4.13.2</junit.version>
+  </properties>
+  
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework</groupId>
+        <artifactId>spring-core</artifactId>
+        <version>${spring.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+  
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.10.1</version>
+          <configuration>
+            <source>${java.version}</source>
+            <target>${java.version}</target>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>
+
+Child POM (api/pom.xml):
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  
+  <parent>
+    <groupId>com.example</groupId>
+    <artifactId>my-org</artifactId>
+    <version>1.0.0</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+  
+  <artifactId>api</artifactId>
+  
+  <dependencies>
+    <!-- No version needed - inherited from parent -->
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+    </dependency>
+  </dependencies>
+</project>
+
+Building Multi-module:
+$ mvn clean install        # Builds all modules
+$ mvn -f api/pom.xml package  # Build specific module
+
+
+2️⃣ VERSION CONFLICT RESOLUTION
+──────────────────────────────
+
+Dependency Tree:
+$ mvn dependency:tree
+
+Example Output:
+[INFO] my-app:1.0.0
+[INFO] +- org.springframework:spring-core:jar:6.0.0:compile
+[INFO] +- org.springframework:spring-data-jpa:jar:3.0.0:compile
+[INFO] |  +- org.springframework:spring-core:jar:5.3.0:compile
+[INFO] +- org.hibernate:hibernate-core:jar:5.6.0:compile
+[INFO] |  +- org.springframework:spring-core:jar:5.2.0:compile
+
+Conflict: spring-core used in 3 versions!
+
+Resolution Strategies:
+
+1. Nearest Definition Wins:
+Direct dependency closer than transitive
+
+2. Declared Order:
+First declared wins (in same level)
+
+3. Exclusion:
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-data-jpa</artifactId>
+  <exclusions>
+    <exclusion>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+    </exclusion>
+  </exclusions>
+</dependency>
+
+4. Explicit Version:
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-core</artifactId>
+  <version>6.0.0</version>
+</dependency>
+
+5. Dependency Management:
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>6.0.0</version>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+
+Finding Conflicts:
+$ mvn dependency:analyze
+$ mvn dependency:tree -Dverbose
+
+
+3️⃣ DEPENDENCY SCOPE DEEP DIVE
+────────────────────────────
+
+Compile Scope (Default):
+- Available in all build phases
+- Transitive (dependencies of dependencies included)
+
+Example:
+<dependency>
+  <groupId>org.springframework</groupId>
+  <artifactId>spring-core</artifactId>
+  <scope>compile</scope>
+</dependency>
+
+Provided Scope:
+- Needed at compile-time
+- NOT packaged in JAR
+- Provided by runtime container
+
+Example:
+<dependency>
+  <groupId>javax.servlet</groupId>
+  <artifactId>servlet-api</artifactId>
+  <version>3.0</version>
+  <scope>provided</scope>
+</dependency>
+
+Runtime Scope:
+- NOT needed at compile-time
+- Needed at runtime
+- Not transitive to downstream
+
+Example:
+<dependency>
+  <groupId>mysql</groupId>
+  <artifactId>mysql-connector-java</artifactId>
+  <scope>runtime</scope>
+</dependency>
+
+Test Scope:
+- Only for testing
+- NOT packaged
+- Not available in runtime
+
+Example:
+<dependency>
+  <groupId>junit</groupId>
+  <artifactId>junit</artifactId>
+  <scope>test</scope>
+</dependency>
+
+System Scope (Not Recommended):
+- Reference external JAR
+- Must provide systemPath
+
+Example:
+<dependency>
+  <groupId>com.example</groupId>
+  <artifactId>mylib</artifactId>
+  <version>1.0</version>
+  <scope>system</scope>
+  <systemPath>${project.basedir}/lib/mylib.jar</systemPath>
+</dependency>
+
+Import Scope:
+- Only in dependencyManagement
+- Imports dependencies from another POM
+
+Example:
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-dependencies</artifactId>
+      <version>2021.0.0</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+
+
+4️⃣ BUILD OPTIMIZATION & CACHING
+────────────────────────────────
+
+Maven Repository Structure:
+~/.m2/repository/
+├── org/
+│   └── springframework/
+│       ├── spring-core/
+│       │   ├── 5.3.0/
+│       │   │   ├── spring-core-5.3.0.jar
+│       │   │   └── spring-core-5.3.0.pom
+│       │   └── 6.0.0/
+│       │       └── ...
+│       └── ...
+
+Local Repository Settings (~/.m2/settings.xml):
+<settings>
+  <localRepository>/custom/path/.m2/repository</localRepository>
+  
+  <repositories>
+    <repository>
+      <id>central</id>
+      <url>https://repo1.maven.org/maven2</url>
+    </repository>
+    <repository>
+      <id>mycompany</id>
+      <url>https://maven.mycompany.com/repository</url>
+    </repository>
+  </repositories>
+</settings>
+
+Offline Mode:
+$ mvn install -o        # Use local cache only
+
+Dependency Download:
+$ mvn dependency:resolve
+$ mvn dependency:go-offline  # Download all dependencies
+
+Skip Download:
+$ mvn install -o -DskipTests
+
+Parallel Build:
+$ mvn -T 1C install     # 1 thread per core
+$ mvn -T 4 install      # 4 threads
+
+Build Properties (pom.xml):
+<properties>
+  <maven.compiler.showDeprecation>true</maven.compiler.showDeprecation>
+  <maven.compiler.showWarnings>true</maven.compiler.showWarnings>
+</properties>
+
+
+5️⃣ MAVEN WITH DOCKER & CI/CD
+────────────────────────────
+
+Docker Build Context:
+Dockerfile:
+FROM maven:3.8.4-openjdk-17
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+COPY src ./src
+RUN mvn clean package -DskipTests
+RUN mvn install:install-file -Dfile=target/*.jar ...
+
+Fast Docker Builds - Layer Caching:
+Dockerfile:
+FROM maven:3.8.4-openjdk-17
+WORKDIR /app
+
+# Layer 1: POM only (cached if pom unchanged)
+COPY pom.xml .
+RUN mvn dependency:go-offline
+
+# Layer 2: Source code (rebuilt only if code changed)
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# Layer 3: Runtime
+FROM openjdk:17-jdk-slim
+COPY --from=0 /app/target/*.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
+
+Maven in CI/CD:
+- GitHub Actions: maven-setup-java
+- Jenkins: Maven plugin
+- GitLab CI: maven docker image
+
+
+6️⃣ SPRING BOOT WITH MAVEN
+──────────────────────────
+
+Spring Boot Starter:
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+
+Spring Boot Maven Plugin:
+<plugin>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-maven-plugin</artifactId>
+  <version>3.0.0</version>
+  <executions>
+    <execution>
+      <goals>
+        <goal>repackage</goal>
+      </goals>
+    </execution>
+  </executions>
+</plugin>
+
+Building Executable JAR:
+$ mvn clean package
+$ java -jar target/app-1.0.0.jar
+
+Spring Boot Profiles:
+application.properties:
+spring.profiles.active=production
+
+Separate property files:
+application-dev.properties
+application-prod.properties
+application-test.properties
+
+Using Profiles:
+$ java -jar app.jar --spring.profiles.active=production
+
+
+PRACTICAL EXERCISE - COMPLETE PROJECT:
+=====================================================
+
+1. Create multi-module project:
+$ mvn archetype:generate \
+  -DgroupId=com.example \
+  -DartifactId=myapp \
+  -DarchetypeArtifactId=maven-archetype-quickstart \
+  -DinteractiveMode=false
+
+2. Create module structure:
+$ cd myapp
+$ mkdir -p core api web
+
+3. Create child POMs with parent reference
+4. Add dependencies with scopes
+5. Build modules individually
+6. Use dependency tree to check
+
+$ mvn dependency:tree
+$ mvn dependency:analyze
+
+7. Optimize with parent POM
+8. Create Dockerfile for multi-stage build
+9. Build and package
+10. Push to registry
+
+
+SUMMARY - UNIT IV COMPLETED:
+============================
+✓ Maven build automation
+✓ Project Object Model
+✓ Directory structure
+✓ Build lifecycle
+✓ Dependency management
+✓ Version resolution
+✓ Maven plugins
+✓ Maven wrapper
+✓ Docker integration
+✓ CI/CD integration
+✓ Multi-module projects
+✓ Spring Boot integration

@@ -1,0 +1,481 @@
+📚 DAY 18: GITHUB ACTIONS - DEPLOYMENT & ADVANCED
+================================================
+
+Unit V: Continuous Integration with GitHub Actions
+Topics: Deployments, Matrix strategies, Self-hosted runners
+
+1️⃣ DEPLOYMENT WITH GITHUB ACTIONS
+──────────────────────────────────
+
+Deployment Environments:
+Settings → Environments → Create environment
+
+Environment Configuration:
+- Environment secrets (separate from repo secrets)
+- Required reviewers
+- Deployment branches
+- Deployment restrictions
+
+Workflow with Environments:
+name: Deploy to Prod
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build and push
+        id: meta
+        run: echo "image-tag=v1.0.0" >> $GITHUB_OUTPUT
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production      # Requires approval
+    
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "Deploying ${{ needs.build.outputs.image-tag }}"
+
+
+Deployment Status:
+- Creates deployment record
+- Tracks deployment history
+- Shows status (success/failure)
+- Environment tracking
+
+Deployment Actions:
+- actions/deploy-pages@v2
+- actions/deploy-to-eks-cluster
+- appleboy/ssh-action
+
+
+2️⃣ SSH DEPLOYMENT
+──────────────────
+
+Using SSH to deploy:
+
+Setup:
+1. Generate SSH key pair:
+   $ ssh-keygen -t rsa -b 4096
+
+2. Add public key to server:
+   $ cat ~/.ssh/id_rsa.pub | ssh user@server "cat >> ~/.ssh/authorized_keys"
+
+3. Add private key to GitHub Secrets:
+   - Copy ~/.ssh/id_rsa content
+   - Settings → Secrets → Add SSH_PRIVATE_KEY
+
+Workflow:
+name: Deploy via SSH
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy with SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /app
+            git pull origin main
+            docker-compose pull
+            docker-compose up -d
+            docker-compose logs
+
+
+3️⃣ MATRIX STRATEGIES
+───────────────────
+
+What are Matrix Strategies?
+- Run same job with different configurations
+- Parallel execution
+- Useful for testing multiple versions
+
+Matrix Example (Multiple Java Versions):
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: [11, 17, 21]
+        os: [ubuntu-latest, windows-latest]
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java-version }}
+      
+      - name: Test
+        run: mvn test
+
+This creates 6 jobs (3 Java versions × 2 OS)
+
+Matrix with Includes/Excludes:
+strategy:
+  matrix:
+    java-version: [11, 17, 21]
+    os: [ubuntu-latest, windows-latest]
+    include:
+      - java-version: 21
+        experimental: true
+    exclude:
+      - java-version: 11
+        os: windows-latest
+
+Matrix Context Variables:
+${{ matrix.java-version }}
+${{ matrix.os }}
+${{ matrix.experimental }}
+
+Fail Fast:
+strategy:
+  fail-fast: false        # Continue even if one fails
+  max-parallel: 2         # Limit parallel jobs
+
+Example - Testing Multiple Frameworks:
+strategy:
+  matrix:
+    include:
+      - framework: spring-boot
+        version: 3.0.0
+      - framework: quarkus
+        version: 3.0.0
+      - framework: micronaut
+        version: 4.0.0
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Test with ${{ matrix.framework }}
+        run: mvn test -Dframework=${{ matrix.framework }}
+
+
+4️⃣ CACHING & PERFORMANCE
+─────────────────────────
+
+Maven Dependency Cache:
+- uses: actions/setup-java@v3
+  with:
+    java-version: '17'
+    cache: maven
+
+Manual Caching:
+- uses: actions/cache@v3
+  with:
+    path: ~/.m2/repository
+    key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+    restore-keys: |
+      ${{ runner.os }}-maven-
+
+Docker Layer Caching:
+with:
+  cache-from: type=gha
+  cache-to: type=gha,mode=max
+
+Cache Keys:
+- Based on files (e.g., pom.xml)
+- Hash changes = cache miss
+- Restore keys = fallback options
+
+Cache Size Limits:
+- 5 GB per repository
+- 120 days retention
+- FIFO eviction
+
+
+5️⃣ CONDITIONAL EXECUTION
+─────────────────────────
+
+if Conditions:
+name: Conditional Workflow
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - uses: actions/checkout@v3
+      - run: mvn test
+
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Deploy to production
+        run: echo "Deploying..."
+
+Step-level Conditions:
+steps:
+  - name: Run only on main
+    if: github.ref == 'refs/heads/main'
+    run: echo "Main branch only"
+  
+  - name: Run on PR or push
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    run: echo "PR or push"
+  
+  - name: Run on success
+    if: success()
+    run: echo "Previous step succeeded"
+  
+  - name: Run on failure
+    if: failure()
+    run: echo "Previous step failed"
+  
+  - name: Always run
+    if: always()
+    run: echo "Always runs"
+
+Conditional Needs:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
+  
+  deploy:
+    needs: build
+    if: needs.build.outputs.should-deploy == 'true'
+    runs-on: ubuntu-latest
+
+
+6️⃣ SELF-HOSTED RUNNERS
+──────────────────────
+
+What are Self-hosted Runners?
+- Run workflows on your own machine/server
+- Full control over environment
+- Better for sensitive operations
+- Can use private networks
+- Cost-effective for heavy workloads
+
+Setup Self-hosted Runner:
+
+1. Go to Settings → Actions → Runners
+
+2. Click "New self-hosted runner"
+
+3. Download runner:
+$ mkdir ~/runner
+$ cd ~/runner
+$ curl -o actions-runner-linux-x64.tar.gz \
+  https://github.com/actions/runner/releases/download/v2.307.1/actions-runner-linux-x64-2.307.1.tar.gz
+$ tar xzf ./actions-runner-linux-x64.tar.gz
+
+4. Configure:
+$ ./config.sh --url https://github.com/YOUR_USERNAME/YOUR_REPO \
+  --token YOUR_TOKEN
+
+5. Run:
+$ ./run.sh
+
+Using Self-hosted Runner:
+jobs:
+  build:
+    runs-on: self-hosted           # Your machine
+    # or
+    runs-on: [self-hosted, linux]  # With labels
+
+Runner Labels:
+$ ./config.sh --labels linux,docker,production
+
+Using Labels:
+runs-on: [self-hosted, production, docker]
+
+Managing Runners:
+- View runner status in Settings → Actions → Runners
+- Remove runners when no longer needed
+- Monitor runner health and logs
+
+
+COMPREHENSIVE FINAL WORKFLOW:
+============================
+
+name: Complete CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: [11, 17, 21]
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+      
+      - name: Run tests
+        run: mvn clean verify
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.java-version }}
+          path: target/surefire-reports/
+  
+  build:
+    name: Build Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha
+      
+      - name: Build and push
+        id: image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  
+  deploy-staging:
+    name: Deploy to Staging
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /app && docker pull ${{ needs.build.outputs.image }}
+            docker-compose up -d
+  
+  deploy-production:
+    name: Deploy to Production
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: production
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Deploy to production
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /app && docker pull ${{ needs.build.outputs.image }}
+            docker-compose up -d
+
+
+PRACTICAL EXERCISE:
+===================
+
+1. Create complete workflow with:
+   - Unit testing (matrix strategy)
+   - Docker image building
+   - Conditional deployment
+   - SSH deployment
+
+2. Set up GitHub environments:
+   - staging (auto-deploy from develop)
+   - production (requires approval, deploy from tags)
+
+3. Configure secrets in GitHub
+
+4. Test workflow:
+   - Push to develop → deploy to staging
+   - Create tag → deploy to production
+
+5. Monitor workflow runs in Actions tab
+
+
+SUMMARY - UNIT V COMPLETED:
+============================
+✓ GitHub Actions basics
+✓ Workflow structure
+✓ Triggers and events
+✓ Jobs and steps
+✓ Actions and runners
+✓ Secrets management
+✓ Matrix strategies
+✓ Caching
+✓ Docker integration
+✓ Deployment workflows
+✓ Conditional execution
+✓ Self-hosted runners
+✓ Complete CI/CD pipeline

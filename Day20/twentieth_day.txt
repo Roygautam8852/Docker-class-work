@@ -1,0 +1,521 @@
+📚 DAY 20: JENKINS PIPELINES
+============================
+
+Unit VI: CI/CD with Jenkins
+Topics: Declarative pipelines, Scripted pipelines, Jenkinsfile
+
+1️⃣ FREESTYLE VS PIPELINE JOBS
+─────────────────────────────
+
+Freestyle Jobs:
+- GUI configuration
+- Simple linear workflows
+- Difficult to version control
+- Limited code reuse
+
+Example Freestyle Job:
+1. Checkout code (UI configured)
+2. Run build (shell command)
+3. Run tests (shell command)
+4. Deploy (shell commands)
+→ Limited flexibility
+
+Pipeline Jobs:
+- Code-as-infrastructure (Jenkinsfile)
+- Complex workflows
+- Version controlled
+- Reusable components (shared libraries)
+- Better for CI/CD
+
+Pipeline Advantages:
+✓ Versioned with code
+✓ Code review for changes
+✓ Complex branching logic
+✓ Reusable stages
+✓ Better error handling
+✓ Parallel execution
+✓ Distributed testing
+
+
+2️⃣ DECLARATIVE PIPELINE SYNTAX
+──────────────────────────────
+
+Basic Structure:
+pipeline {
+  agent any
+  
+  options {
+    timeout(time: 30, unit: 'MINUTES')
+    timestamps()
+  }
+  
+  environment {
+    BUILD_ENV = 'production'
+    DOCKER_REGISTRY = 'ghcr.io'
+  }
+  
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    
+    stage('Build') {
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+    
+    stage('Test') {
+      steps {
+        sh 'mvn test'
+      }
+    }
+    
+    stage('Deploy') {
+      when {
+        branch 'main'
+      }
+      steps {
+        sh './deploy.sh'
+      }
+    }
+  }
+  
+  post {
+    always {
+      junit 'target/surefire-reports/*.xml'
+      cleanWs()
+    }
+    failure {
+      mail to: 'team@example.com',
+           subject: "Build Failed: ${env.JOB_NAME}",
+           body: "Build ${env.BUILD_NUMBER} failed"
+    }
+  }
+}
+
+Agent Options:
+agent any                      # Any available agent
+agent none                     # No default agent
+agent {
+  docker {
+    image 'maven:3.8-openjdk-17'
+    args '-v /root/.m2:/root/.m2'
+  }
+}
+agent {
+  label 'linux && docker'
+}
+
+Stages:
+stages {
+  stage('Build') {
+    steps {
+      sh 'mvn clean package'
+    }
+  }
+  
+  stage('Test') {
+    parallel {
+      stage('Unit Tests') {
+        steps {
+          sh 'mvn test'
+        }
+      }
+      stage('Integration Tests') {
+        steps {
+          sh 'mvn verify -P integration'
+        }
+      }
+    }
+  }
+}
+
+When Conditions:
+when {
+  branch 'main'                    # Only main branch
+  branch pattern: "release-.*"    # Pattern matching
+  tag "v*"                        # Only on tags
+  environment name: 'ENV', value: 'production'
+  expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+  beforeAgent true                # Evaluate before allocating agent
+}
+
+Post Actions:
+post {
+  always {                         # Always run
+    junit 'target/surefire-reports/**/*.xml'
+    cleanWs()
+  }
+  success {                        # On success
+    echo 'Build succeeded!'
+  }
+  failure {                        # On failure
+    echo 'Build failed!'
+    mail to: 'team@example.com',
+         subject: "Build Failed: ${env.JOB_NAME}",
+         body: "Build ${env.BUILD_NUMBER} failed"
+  }
+  unstable {                       # Tests failed
+    echo 'Build unstable'
+  }
+  fixed {                          # Previous build failed
+    echo 'Build now fixed'
+  }
+}
+
+Environment Variables:
+environment {
+  REGISTRY = 'ghcr.io'
+  IMAGE = "${env.REGISTRY}/${env.JOB_NAME}"
+}
+
+Using Variables:
+steps {
+  sh 'docker build -t ${IMAGE}:${BUILD_NUMBER} .'
+}
+
+Options:
+options {
+  buildDiscarder(logRotator(numToKeepStr: '30'))
+  disableConcurrentBuilds()
+  timeout(time: 1, unit: 'HOURS')
+  timestamps()
+}
+
+
+3️⃣ SCRIPTED PIPELINE SYNTAX
+───────────────────────────
+
+More flexible than declarative:
+node('linux') {
+  try {
+    stage('Checkout') {
+      checkout scm
+    }
+    
+    stage('Build') {
+      sh 'mvn clean package'
+    }
+    
+    stage('Test') {
+      parallel(
+        'Unit Tests': {
+          sh 'mvn test'
+        },
+        'Integration Tests': {
+          sh 'mvn verify'
+        }
+      )
+    }
+    
+    stage('Deploy') {
+      if (env.BRANCH_NAME == 'main') {
+        sh './deploy.sh'
+      }
+    }
+  } catch (Exception e) {
+    currentBuild.result = 'FAILURE'
+    throw e
+  } finally {
+    junit 'target/surefire-reports/*.xml'
+  }
+}
+
+Flow Control:
+if (env.BUILD_NUMBER > 100) {
+  // do something
+}
+
+for (int i = 0; i < 3; i++) {
+  echo "Iteration ${i}"
+}
+
+while (condition) {
+  // do something
+}
+
+Error Handling:
+try {
+  sh 'mvn test'
+} catch (Exception e) {
+  echo "Test failed: ${e}"
+  currentBuild.result = 'UNSTABLE'
+} finally {
+  echo "Cleanup"
+}
+
+
+4️⃣ JENKINSFILE
+────────────────
+
+What is Jenkinsfile?
+- Pipeline definition in code
+- Stored with repository
+- Version controlled
+- Discovered automatically
+
+Creating Jenkinsfile:
+In repository root: Jenkinsfile
+
+Content:
+pipeline {
+  agent any
+  
+  stages {
+    stage('Build') {
+      steps {
+        sh 'echo "Building..."'
+      }
+    }
+  }
+}
+
+Multibranch Pipeline:
+- Jenkins discovers branches
+- Creates pipeline per branch
+- Looks for Jenkinsfile
+- Automatic cleanup of branches
+
+Configuration:
+1. Create Multibranch Pipeline job
+2. Add repository source (GitHub)
+3. Configure credentials
+4. Jenkins discovers Jenkinsfile in each branch
+
+Different Jenkinsfile per Branch:
+In main branch: Jenkinsfile (deploy to production)
+In develop: Jenkinsfile (deploy to staging)
+
+Environment-specific Configuration:
+pipeline {
+  agent any
+  
+  environment {
+    ENV_CONFIG = "${env.BRANCH_NAME == 'main' ? 'production' : 'staging'}"
+    DOCKER_REGISTRY = 'ghcr.io'
+  }
+  
+  stages {
+    stage('Build') {
+      steps {
+        sh 'mvn clean package -Denv=${ENV_CONFIG}'
+      }
+    }
+    
+    stage('Deploy') {
+      steps {
+        sh './deploy.sh ${ENV_CONFIG}'
+      }
+    }
+  }
+}
+
+
+5️⃣ PIPELINE PARAMETERS & VARIABLES
+──────────────────────────────────
+
+Parameters:
+pipeline {
+  parameters {
+    string(name: 'VERSION', defaultValue: '1.0.0', description: 'Version to deploy')
+    choice(name: 'ENVIRONMENT', choices: ['dev', 'staging', 'prod'], description: 'Deployment environment')
+    booleanParam(name: 'RUN_TESTS', defaultValue: true, description: 'Run tests')
+  }
+  
+  stages {
+    stage('Deploy') {
+      steps {
+        echo "Deploying version ${params.VERSION} to ${params.ENVIRONMENT}"
+      }
+    }
+  }
+}
+
+Pre-defined Variables:
+${BUILD_NUMBER}         # Build number
+${BUILD_ID}            # Build ID
+${JOB_NAME}            # Job name
+${BRANCH_NAME}         # Branch name (multibranch)
+${COMMIT_ID}           # Git commit hash
+${GIT_COMMIT}          # Git commit
+${GIT_BRANCH}          # Git branch
+${WORKSPACE}           # Build workspace
+${BUILD_LOG_REGEXP}    # Regexp from log
+
+
+6️⃣ PARALLEL EXECUTION
+──────────────────────
+
+Parallel Stages:
+stages {
+  stage('Test') {
+    parallel {
+      stage('Unit Tests') {
+        agent { docker { image 'maven:3.8' } }
+        steps {
+          sh 'mvn test'
+        }
+      }
+      
+      stage('Integration Tests') {
+        agent { docker { image 'maven:3.8' } }
+        steps {
+          sh 'mvn verify'
+        }
+      }
+      
+      stage('Code Quality') {
+        agent any
+        steps {
+          sh 'sonar-scanner'
+        }
+      }
+    }
+  }
+}
+
+Parallel Steps:
+steps {
+  parallel(
+    'Build': {
+      sh 'mvn clean package'
+    },
+    'Analysis': {
+      sh 'sonar-scanner'
+    },
+    'Docker Build': {
+      sh 'docker build -t myapp .'
+    }
+  )
+}
+
+Matrix Strategy (Jenkins 2.366+):
+options {
+  parallelsAlwaysFailFast()
+}
+
+stages {
+  stage('Test') {
+    matrix {
+      agent any
+      axes {
+        axis {
+          name 'JAVA_VERSION'
+          values '11', '17', '21'
+        }
+        axis {
+          name 'OS'
+          values 'linux', 'windows'
+        }
+      }
+      stages {
+        stage('Test') {
+          steps {
+            sh 'java -version'
+            sh 'mvn test'
+          }
+        }
+      }
+    }
+  }
+}
+
+This creates 6 stages (3 Java versions × 2 OS)
+
+
+PRACTICAL EXERCISE - CREATE PIPELINE:
+====================================
+
+1. Create Jenkinsfile in repository:
+$ cat > Jenkinsfile << 'EOF'
+pipeline {
+  agent any
+  
+  environment {
+    DOCKER_REGISTRY = 'ghcr.io'
+    IMAGE_NAME = 'myapp'
+  }
+  
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    
+    stage('Build') {
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+    
+    stage('Test') {
+      steps {
+        sh 'mvn test'
+      }
+    }
+    
+    stage('Build Docker Image') {
+      steps {
+        sh 'docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} .'
+      }
+    }
+    
+    stage('Deploy') {
+      when {
+        branch 'main'
+      }
+      steps {
+        sh 'echo "Deploying to production..."'
+      }
+    }
+  }
+  
+  post {
+    always {
+      junit 'target/surefire-reports/**/*.xml'
+      cleanWs()
+    }
+    failure {
+      echo 'Build failed!'
+    }
+  }
+}
+EOF
+
+2. Commit and push:
+$ git add Jenkinsfile
+$ git commit -m "Add Jenkins pipeline"
+$ git push
+
+3. Create Pipeline job in Jenkins:
+- Dashboard → New Item
+- Name: "my-project-pipeline"
+- Select "Pipeline"
+- Pipeline section → Definition: "Pipeline script from SCM"
+- SCM: Git
+- Repository URL: Your git repo
+- Script path: Jenkinsfile
+- Save
+
+4. Build:
+- Click "Build Now"
+- Check Console Output
+- View logs for each stage
+
+
+KEY CONCEPTS:
+=============
+✓ Pipeline = infrastructure-as-code
+✓ Declarative = structured, recommended
+✓ Scripted = flexible, complex workflows
+✓ Jenkinsfile = pipeline in version control
+✓ Stages = logical workflow divisions
+✓ When = conditional execution
+✓ Post = cleanup and notifications
+✓ Parallel = concurrent execution
+✓ Parameters = job inputs
+✓ Agents = execution environment
